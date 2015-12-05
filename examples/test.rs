@@ -1,5 +1,5 @@
 extern crate ioq;
 
 fn main () {
-    println!("test!");
+    let queue = ioq::Queue::new();
 }

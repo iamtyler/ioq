@@ -18,19 +18,9 @@ use win32;
 
 #[cfg(target_pointer_width = "32")]
 pub type Handle = u32;
+
 #[cfg(target_pointer_width = "64")]
 pub type Handle = u64;
-
-
-/****************************************************************************
-*
-*   Linkable
-*
-***/
-
-pub trait Linkable {
-    fn handle (&self) ->  {}
-}
 
 
 /****************************************************************************

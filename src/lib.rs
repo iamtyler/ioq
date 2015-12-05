@@ -11,5 +11,6 @@ extern crate libc;
 
 mod win32;
 mod queue;
+pub mod net;
 
-pub use queue::Queue;
+pub use self::queue::Queue;
