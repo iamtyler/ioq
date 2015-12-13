@@ -9,6 +9,7 @@
 
 use win32;
 use handle::Handle;
+use error::Error;
 
 
 /****************************************************************************
@@ -23,7 +24,7 @@ pub struct Queue {
 
 impl Queue {
     //=======================================================================
-    pub fn new () -> Option<Queue> {
+    pub fn new () -> Result<Queue, Error> {
         let raw = unsafe {
             win32::CreateIoCompletionPort(
                 win32::INVALID_HANDLE_VALUE,
@@ -32,18 +33,20 @@ impl Queue {
                 0
             )
         };
-        if raw.is_null() {
-            return None;
-        }
 
-        return Some(Queue {
-            handle: Handle::from_raw(raw),
-        });
+        if raw.is_null() {
+            Err(Error::last_os_error())
+        }
+        else {
+            Ok(Queue {
+                handle: Handle::from_raw(raw),
+            })
+        }
     }
 
     //=======================================================================
-    pub fn link (&self, handle: Handle) -> bool {
-        return unsafe {
+    pub fn associate (&self, handle: Handle) -> Result<(), Error> {
+        let success = unsafe {
             win32::CreateIoCompletionPort(
                 handle.to_raw(),
                 self.handle.to_raw(),
@@ -51,6 +54,13 @@ impl Queue {
                 0
             )
         } == self.handle.to_raw();
+
+        if success {
+            Ok(())
+        }
+        else {
+            Err(Error::last_os_error())
+        }
     }
 }
 

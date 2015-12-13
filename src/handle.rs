@@ -30,6 +30,7 @@ impl Handle {
     pub fn from_raw (raw: HANDLE) -> Handle { Handle { raw: raw } }
     pub fn to_raw (&self) -> HANDLE { self.raw }
     pub fn into_raw (self) -> HANDLE { self.raw }
+    pub fn is_null (&self) -> bool { self.raw.is_null() }
     fn to_usize (&self) -> usize { self.raw as usize }
 
     //=======================================================================
