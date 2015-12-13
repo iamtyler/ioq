@@ -1,6 +1,6 @@
 /**************************************************************************
 *
-*   queue.rs
+*   error.rs
 *   ioq
 *
 *   Copyright 2015 Tyler Cole
@@ -9,7 +9,6 @@
 
 use std::error;
 use std::fmt;
-use sys;
 
 
 /****************************************************************************
@@ -130,4 +129,27 @@ struct Custom {
 #[derive(Copy, PartialEq, Eq, Clone, Debug)]
 pub enum ErrorKind {
     Unknown,
+}
+
+
+/****************************************************************************
+*
+*   OS API
+*
+***/
+
+#[cfg(windows)]
+mod sys {
+    #![allow(non_camel_case_types)]
+    #![allow(non_snake_case)]
+
+    #[link(name = "kernel32")]
+    extern "stdcall" {
+        fn GetLastError () -> u32;
+    }
+
+    //=======================================================================
+    pub fn last_error_code () -> i32 {
+        (unsafe { GetLastError() } as i32)
+    }
 }

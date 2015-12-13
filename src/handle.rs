@@ -12,7 +12,6 @@ use std::hash;
 use std::cmp;
 
 use error::Error;
-use sys;
 
 
 /****************************************************************************
@@ -89,5 +88,35 @@ impl Ord for Handle {
     //=======================================================================
     fn cmp (&self, other: &Handle) -> cmp::Ordering {
         self.to_usize().cmp(&other.to_usize())
+    }
+}
+
+
+/****************************************************************************
+*
+*   OS API
+*
+***/
+
+#[cfg(windows)]
+mod sys {
+    #![allow(non_camel_case_types)]
+    #![allow(non_snake_case)]
+
+    use libc;
+
+    pub type HANDLE = *mut libc::c_void;
+    type BOOL = i32;
+
+    #[link(name = "kernel32")]
+    extern "stdcall" {
+        fn CloseHandle (
+            hObject: HANDLE // IN
+        ) -> BOOL;
+    }
+
+    //=======================================================================
+    pub fn close_handle (handle: HANDLE) -> bool {
+        (unsafe { CloseHandle(handle) } != 0)
     }
 }

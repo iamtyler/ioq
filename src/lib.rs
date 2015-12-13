@@ -14,7 +14,6 @@ pub mod error;
 //pub mod net;
 
 mod queue;
-mod sys;
 //mod win32;
 //mod event;
 
