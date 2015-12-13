@@ -20,10 +20,7 @@ use libc;
 *
 ***/
 
-#[cfg(target_pointer_width = "32")]
-pub type SOCKET = u32;
-#[cfg(target_pointer_width = "64")]
-pub type SOCKET = u64;
+pub type SOCKET = usize;
 
 pub const WSADESCRIPTION_LEN: usize = 256;
 pub const WSASYS_STATUS_LEN: usize = 128;

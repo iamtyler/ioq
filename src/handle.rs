@@ -11,8 +11,8 @@ use std::fmt;
 use std::hash;
 use std::cmp;
 
-use win32::HANDLE;
-use win32::CloseHandle;
+use error::Error;
+use sys;
 
 
 /****************************************************************************
@@ -23,19 +23,24 @@ use win32::CloseHandle;
 
 #[derive(Copy)]
 pub struct Handle {
-    raw: HANDLE,
+    raw: sys::HANDLE,
 }
 
 impl Handle {
-    pub fn from_raw (raw: HANDLE) -> Handle { Handle { raw: raw } }
-    pub fn to_raw (&self) -> HANDLE { self.raw }
-    pub fn into_raw (self) -> HANDLE { self.raw }
+    pub fn from_raw (raw: sys::HANDLE) -> Handle { Handle { raw: raw } }
+    pub fn to_raw (&self) -> sys::HANDLE { self.raw }
+    pub fn into_raw (self) -> sys::HANDLE { self.raw }
     pub fn is_null (&self) -> bool { self.raw.is_null() }
     fn to_usize (&self) -> usize { self.raw as usize }
 
     //=======================================================================
-    pub fn close (self) -> bool {
-        return unsafe { CloseHandle(self.raw) } != 0;
+    pub fn close (self) -> Result<(), Error> {
+        if sys::close_handle(self.raw) {
+            Ok(())
+        }
+        else {
+            Err(Error::last_os_error())
+        }
     }
 }
 
