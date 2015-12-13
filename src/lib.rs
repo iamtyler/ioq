@@ -14,6 +14,6 @@ pub mod handle;
 
 mod win32;
 mod queue;
-mod event;
+//mod event;
 
 pub use self::queue::Queue;
