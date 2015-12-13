@@ -8,19 +8,7 @@
 ***/
 
 use win32;
-
-
-/****************************************************************************
-*
-*   Types
-*
-***/
-
-#[cfg(target_pointer_width = "32")]
-pub type Handle = u32;
-
-#[cfg(target_pointer_width = "64")]
-pub type Handle = u64;
+use handle::Handle;
 
 
 /****************************************************************************
@@ -34,8 +22,9 @@ pub struct Queue {
 }
 
 impl Queue {
+    //=======================================================================
     pub fn new () -> Option<Queue> {
-        let handle = unsafe {
+        let raw = unsafe {
             win32::CreateIoCompletionPort(
                 win32::INVALID_HANDLE_VALUE,
                 win32::NULL_HANDLE,
@@ -43,23 +32,49 @@ impl Queue {
                 0
             )
         };
-        if handle.is_null() {
+        if raw.is_null() {
             return None;
         }
 
         return Some(Queue {
-            handle: handle as Handle
+            handle: Handle::from_raw(raw),
         });
     }
 
-    pub fn link (&mut self, handle: Handle) -> bool {
+    //=======================================================================
+    pub fn link (&self, handle: Handle) -> bool {
         return unsafe {
             win32::CreateIoCompletionPort(
-                handle as win32::HANDLE,
-                self.handle as win32::HANDLE,
-                0, // TODO: pass in link notify
+                handle.to_raw(),
+                self.handle.to_raw(),
+                0,
                 0
-            ) as Handle
-        } == self.handle;
+            )
+        } == self.handle.to_raw();
+    }
+}
+
+impl Drop for Queue {
+    //=======================================================================
+    fn drop (&mut self) {
+        self.handle.close();
+    }
+}
+
+
+/****************************************************************************
+*
+*   Tests
+*
+***/
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    //=======================================================================
+    #[test]
+    fn create_queue () {
+        Queue::new().unwrap();
     }
 }

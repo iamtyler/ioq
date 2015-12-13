@@ -9,8 +9,11 @@
 
 extern crate libc;
 
+pub mod handle;
+//pub mod net;
+
 mod win32;
 mod queue;
-pub mod net;
+mod event;
 
 pub use self::queue::Queue;

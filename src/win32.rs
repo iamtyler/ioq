@@ -182,6 +182,10 @@ impl OVERLAPPED {
             hEvent: NULL_HANDLE,
         }
     }
+
+    pub fn reset (&mut self) {
+        *self = OVERLAPPED::new();
+    }
 }
 
 #[link(name = "kernel32")]

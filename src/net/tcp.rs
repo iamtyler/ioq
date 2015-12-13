@@ -33,25 +33,6 @@ const ADDRS_BUFFER_BYTES: usize = ADDR_BUFFER_BYTES * 2;
 
 /****************************************************************************
 *
-*   Client code
-*
-***/
-
-pub trait TcpReceiveNotify {
-    fn on_tcp_receive (
-        &mut self,
-        data: &[u8],
-        conn: &mut TcpConnection
-    );
-}
-
-pub trait TcpConnectNotify {
-    fn on_tcp_connect (&mut self) -> TcpReceiveNotify;
-}
-
-
-/****************************************************************************
-*
 *   Socket
 *
 ***/
@@ -61,6 +42,10 @@ struct Socket {
 }
 
 impl Socket {
+    pub fn handle (&self) -> queue::Handle {
+        return self.handle;
+    }
+
     //=======================================================================
     pub fn is_valid (&self) -> bool {
         self.handle != win32::INVALID_SOCKET
@@ -91,7 +76,7 @@ impl Socket {
     }
 
     //=======================================================================
-    pub fn bind (&mut self, endpoint: Endpoint) -> bool {
+    pub fn bind (&self, endpoint: Endpoint) -> bool {
         // TODO: support IPv6
 
         // Create sockaddr for binding
@@ -122,7 +107,7 @@ impl Socket {
     }
 
     //=======================================================================
-    pub fn listen (&mut self) -> bool {
+    pub fn listen (&self) -> bool {
         let code = unsafe { win32::listen(self.handle, win32::SOMAXCONN) };
         return code == 0;
     }
@@ -146,19 +131,17 @@ impl Drop for Socket {
 
 /****************************************************************************
 *
-*   TcpConnection
+*   TcpStream
 *
 ***/
 
-pub struct TcpConnection {
+pub struct TcpStream {
     handle: queue::Handle,
     local: Endpoint,
     remote: Endpoint,
-    notify: Box<TcpReceiveNotify>,
 }
 
-impl TcpConnection {
-    pub fn handle (&self) -> queue::Handle { self.handle }
+impl TcpStream {
     pub fn endpoint_local (&self) -> &Endpoint { &self.local }
     pub fn endpoint_remote (&self) -> &Endpoint { &self.remote }
 
@@ -167,18 +150,20 @@ impl TcpConnection {
         handle: queue::Handle,
         local: Endpoint,
         remote: Endpoint,
-        notify: Box<TcpReceiveNotify>
-    ) -> TcpConnection {
-        TcpConnection {
+    ) -> TcpStream {
+        TcpStream {
             handle: handle,
             local: local,
             remote: remote,
-            notify: notify,
         }
     }
 
+    pub fn receive (&self, buffer : Box<[u8]>) {
+        let _ = buffer;
+    }
+
     //=======================================================================
-    pub fn send (&mut self, data: &[u8]) {
+    pub fn send (&self, data: &[u8]) {
         let _ = data;
     }
 
@@ -201,6 +186,7 @@ pub struct TcpListener {
     // Async accept data
     accept: Socket,
     addrs: [u8; ADDRS_BUFFER_BYTES],
+    overlapped: win32::OVERLAPPED
 }
 
 impl TcpListener {
@@ -209,13 +195,15 @@ impl TcpListener {
     //=======================================================================
     pub fn new (endpoint: Endpoint) -> Option<TcpListener> {
         // Create socket
-        let socket = Socket::new();
-        if socket.is_none() {
+        let socket;
+        if let Some(s) = Socket::new() {
+            socket = s;
+        }
+        else {
             return None;
         }
 
         // Bind and listen
-        let mut socket = socket.unwrap();
         if !socket.bind(endpoint) || !socket.listen() {
             return None;
         }
@@ -226,6 +214,7 @@ impl TcpListener {
 
             accept: Socket::new_invalid(),
             addrs: [0; ADDRS_BUFFER_BYTES],
+            overlapped: win32::OVERLAPPED::new(),
         });
     }
 
@@ -235,21 +224,22 @@ impl TcpListener {
     }
 
     //=======================================================================
-    fn accept (&mut self) -> bool {
+    pub fn accept (&mut self) -> bool {
         // Proceed only if previous socket was accepted
         if self.accept.is_valid() {
             return true;
         }
 
         // Get new socket
-        let socket = Socket::new();
-        if socket.is_none() {
+        if let Some(socket) = Socket::new() {
+            self.accept = socket;
+        }
+        else {
             return false;
         }
-        self.accept = socket.unwrap();
 
         // Reset accept params
-        let mut overlapped = win32::OVERLAPPED::new();
+        self.overlapped.reset();
         for b in self.addrs.iter_mut() {
             *b = 0;
         }
@@ -264,18 +254,23 @@ impl TcpListener {
                 ADDR_BUFFER_BYTES as u32,
                 ADDR_BUFFER_BYTES as u32,
                 ptr::null_mut(),
-                &mut overlapped as *mut win32::OVERLAPPED
+                &mut self.overlapped as *mut win32::OVERLAPPED
             );
         }
         let code = get_error_code();
         return code == (win32::ERROR_IO_PENDING as u32);
+    }
+
+    //=======================================================================
+    pub fn link (&self, queue : &queue::Queue) -> bool {
+        return queue.link(self.socket.handle());
     }
 }
 
 
 /****************************************************************************
 *
-*   Public functions
+*   Local functions
 *
 ***/
 

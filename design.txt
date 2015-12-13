@@ -1,5 +1,0 @@
-queue
-- link handle
-- queue event
-- dequeue event
-
