@@ -9,10 +9,10 @@
 
 extern crate libc;
 
-pub mod handle;
 pub mod error;
 //pub mod net;
 
+mod handle;
 mod queue;
 //mod win32;
 //mod event;

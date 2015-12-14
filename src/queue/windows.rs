@@ -99,7 +99,7 @@ mod os {
     pub const NULL_HANDLE: HANDLE = 0 as HANDLE;
 
     #[repr(C)]
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Clone, Debug)]
     pub struct OVERLAPPED {
         pub Internal: ULONG_PTR,
         pub InternalHigh: ULONG_PTR,
