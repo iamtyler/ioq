@@ -15,6 +15,5 @@ pub mod error;
 mod handle;
 mod queue;
 //mod win32;
-//mod event;
 
 pub use self::queue::Queue;
