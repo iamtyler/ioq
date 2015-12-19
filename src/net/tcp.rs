@@ -7,17 +7,10 @@
 *
 ***/
 
-// std
 use std::mem;
 use std::ptr;
 
-// external
 use libc;
-
-// internal
-use super::endpoint::*;
-use super::super::queue;
-use super::super::win32;
 
 
 /****************************************************************************

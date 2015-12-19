@@ -10,6 +10,7 @@
 pub mod init;
 pub mod addr;
 
+mod socket;
 //mod tcp;
 
 // pub use self::tcp::TcpListener;

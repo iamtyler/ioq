@@ -200,7 +200,9 @@ impl State {
 
 pub enum Event {
     Custom(Box<Custom>),
-    Dummy, // temporary to prevent compiler errors
+
+    #[allow(dead_code)]
+    Dummy, // TODO: temporary to prevent compiler errors
 }
 
 
