@@ -28,6 +28,18 @@ pub trait ToSocketAddrs {
 
 /****************************************************************************
 *
+*   AddrFamily
+*
+***/
+
+pub enum AddrFamily {
+    V4,
+    V6,
+}
+
+
+/****************************************************************************
+*
 *   IpAddr
 *
 ***/
@@ -36,6 +48,16 @@ pub trait ToSocketAddrs {
 pub enum IpAddr {
     V4(Ipv4Addr),
     V6(Ipv6Addr),
+}
+
+impl IpAddr {
+    //=======================================================================
+    pub fn family (&self) -> AddrFamily {
+        match *self {
+            IpAddr::V4(..) => AddrFamily::V4,
+            IpAddr::V6(..) => AddrFamily::V6,
+        }
+    }
 }
 
 impl fmt::Display for IpAddr {
@@ -83,6 +105,14 @@ impl SocketAddr {
         match *self {
             SocketAddr::V4(ref a) => a.port(),
             SocketAddr::V6(ref a) => a.port(),
+        }
+    }
+
+    //=======================================================================
+    pub fn family (&self) -> AddrFamily {
+        match *self {
+            SocketAddr::V4(..) => AddrFamily::V4,
+            SocketAddr::V6(..) => AddrFamily::V6,
         }
     }
 }

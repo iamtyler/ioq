@@ -11,6 +11,7 @@ use std::fmt;
 use std::hash;
 use std::cmp;
 
+use sys;
 use error::Error;
 
 
@@ -22,17 +23,17 @@ use error::Error;
 
 #[derive(Copy)]
 pub struct Handle {
-    raw: os::HANDLE,
+    raw: sys::HANDLE,
 }
 
 impl Handle {
-    pub fn from_raw (raw: os::HANDLE) -> Handle { Handle { raw: raw } }
-    pub fn to_raw (&self) -> os::HANDLE { self.raw }
+    pub fn from_raw (raw: sys::HANDLE) -> Handle { Handle { raw: raw } }
+    pub fn to_raw (&self) -> sys::HANDLE { self.raw }
     fn to_usize (&self) -> usize { self.raw as usize }
 
     //=======================================================================
     pub fn close (self) -> Result<(), Error> {
-        let success = unsafe { os::CloseHandle(self.raw) } != 0;
+        let success = unsafe { sys::CloseHandle(self.raw) } != 0;
 
         if success {
             Ok(())
@@ -88,30 +89,5 @@ impl Ord for Handle {
     //=======================================================================
     fn cmp (&self, other: &Handle) -> cmp::Ordering {
         self.to_usize().cmp(&other.to_usize())
-    }
-}
-
-
-/****************************************************************************
-*
-*   OS
-*
-***/
-
-#[cfg(windows)]
-mod os {
-    #![allow(non_camel_case_types)]
-    #![allow(non_snake_case)]
-
-    use libc;
-
-    pub type HANDLE = *mut libc::c_void;
-    pub type BOOL = i32;
-
-    #[link(name = "kernel32")]
-    extern "stdcall" {
-        pub fn CloseHandle (
-            hObject: HANDLE // IN
-        ) -> BOOL;
     }
 }

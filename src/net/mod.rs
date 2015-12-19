@@ -7,11 +7,13 @@
 *
 ***/
 
-pub mod init;
-pub mod addr;
-
+mod init;
+mod addr;
 mod socket;
-//mod tcp;
+mod tcp;
 
-// pub use self::tcp::TcpListener;
-// pub use self::tcp::TcpStream;
+pub use self::init::*;
+pub use self::addr::*;
+
+pub use self::tcp::TcpListener;
+pub use self::tcp::TcpStream;

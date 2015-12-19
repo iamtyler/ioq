@@ -12,6 +12,7 @@ extern crate libc;
 pub mod error;
 pub mod net;
 
+mod sys;
 mod handle;
 mod queue;
 //mod win32;
