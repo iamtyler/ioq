@@ -10,7 +10,7 @@
 extern crate libc;
 
 pub mod error;
-//pub mod net;
+pub mod net;
 
 mod handle;
 mod queue;

@@ -22,17 +22,19 @@ use error::Error;
 
 #[derive(Copy)]
 pub struct Handle {
-    raw: sys::HANDLE,
+    raw: os::HANDLE,
 }
 
 impl Handle {
-    pub fn from_raw (raw: sys::HANDLE) -> Handle { Handle { raw: raw } }
-    pub fn to_raw (&self) -> sys::HANDLE { self.raw }
+    pub fn from_raw (raw: os::HANDLE) -> Handle { Handle { raw: raw } }
+    pub fn to_raw (&self) -> os::HANDLE { self.raw }
     fn to_usize (&self) -> usize { self.raw as usize }
 
     //=======================================================================
     pub fn close (self) -> Result<(), Error> {
-        if sys::close_handle(self.raw) {
+        let success = unsafe { os::CloseHandle(self.raw) } != 0;
+
+        if success {
             Ok(())
         }
         else {
@@ -92,29 +94,24 @@ impl Ord for Handle {
 
 /****************************************************************************
 *
-*   OS API
+*   OS
 *
 ***/
 
 #[cfg(windows)]
-mod sys {
+mod os {
     #![allow(non_camel_case_types)]
     #![allow(non_snake_case)]
 
     use libc;
 
     pub type HANDLE = *mut libc::c_void;
-    type BOOL = i32;
+    pub type BOOL = i32;
 
     #[link(name = "kernel32")]
     extern "stdcall" {
-        fn CloseHandle (
+        pub fn CloseHandle (
             hObject: HANDLE // IN
         ) -> BOOL;
-    }
-
-    //=======================================================================
-    pub fn close_handle (handle: HANDLE) -> bool {
-        (unsafe { CloseHandle(handle) } != 0)
     }
 }
