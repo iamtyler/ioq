@@ -194,15 +194,11 @@ mod os {
     #![allow(non_snake_case)]
 
     use std::net;
-
     use libc;
-
     use super::endian;
-
 
     pub type HANDLE = *mut libc::c_void;
     pub type SOCKET = usize;
-
     pub type VOID_PTR = *const libc::c_void;
 
     pub const WSADESCRIPTION_LEN: usize = 256;
@@ -210,9 +206,7 @@ mod os {
 
     pub const INVALID_SOCKET: SOCKET = !0 as SOCKET;
     pub const SOMAXCONN: i32 = 0x7fffffff;
-    pub const SOCKET_ERROR: i32 = -1;
 
-    pub const AF_UNSPEC: i32 = 0;
     pub const AF_INET: i32 = 2;
     pub const AF_INET6: i32 = 23;
 
@@ -221,11 +215,6 @@ mod os {
 
     pub const IPPROTO_TCP: i32 = 6;
     pub const IPPROTO_UDP: i32 = 17;
-
-    pub const AI_NONE: i32 = 0x00000000;
-    pub const AI_PASSIVE: i32 = 0x00000001;
-
-    pub const ERROR_IO_PENDING: i32 = 997;
 
     #[repr(C)]
     pub struct in_addr {
