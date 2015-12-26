@@ -161,8 +161,8 @@ impl sockaddr_in6 {
 *
 ***/
 
-#[repr(C)]
 #[derive(Clone, Debug)]
+#[repr(C)]
 pub struct OVERLAPPED {
     pub Internal: ULONG_PTR,
     pub InternalHigh: ULONG_PTR,

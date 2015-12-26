@@ -23,11 +23,12 @@ use error::Error;
 ***/
 
 pub trait Context {
-    fn to_event (self: Box<Self>, bytes: u32) -> Event;
+    fn into_event (self: Box<Self>, bytes: u32) -> Event;
+    fn into_error (self: Box<Self>, bytes: u32) -> Event;
 }
 
 pub trait Custom {
-    fn execute (&mut self);
+    fn execute (self: Box<Self>);
 }
 
 
@@ -38,8 +39,8 @@ pub trait Custom {
 ***/
 
 pub enum Event {
-    Custom(Box<Custom>),
-    TcpConnect(net::TcpStream),
+    Custom,
+    TcpAccept(Result<net::TcpStream, Error>),
 }
 
 
@@ -58,15 +59,18 @@ pub struct State {
 impl State {
     //=======================================================================
     pub fn new (context: Box<Context>) -> State {
+        let raw = Box::into_raw(context);
+        
         State {
             overlapped: sys::OVERLAPPED::new(),
-            context: context,
+            context: unsafe { Box::from_raw(raw) },
         }
     }
 
     //=======================================================================
-    fn into_event (self, bytes: u32) -> Event {
-        self.context.to_event(bytes)
+    fn into_context (self) -> Box<Context> {
+        let raw = Box::into_raw(self.context);
+        unsafe { Box::from_raw(raw) }
     }
 
     //=======================================================================
@@ -77,7 +81,8 @@ impl State {
 
     //=======================================================================
     pub fn overlapped_raw (&self) -> *mut sys::OVERLAPPED {
-        &self.overlapped as *const _ as *mut _
+        let raw = &self.overlapped as *const _ as *mut _;
+        raw
     }
 }
 
@@ -105,7 +110,7 @@ impl Queue {
         };
 
         if raw.is_null() {
-            Err(Error::last_os_error())
+            Err(Error::os_error())
         }
         else {
             Ok(Queue {
@@ -121,7 +126,7 @@ impl Queue {
         let state = Box::new(State::new(context));
         let overlapped = state.overlapped_raw();
 
-        // 
+        // Post event
         let success = unsafe {
             sys::PostQueuedCompletionStatus(
                 self.handle.to_raw(),
@@ -133,7 +138,7 @@ impl Queue {
 
         // Handle error
         if !success {
-            return Err(Error::last_os_error());
+            return Err(Error::os_error());
         }
 
         // Take ownership of memory
@@ -159,14 +164,20 @@ impl Queue {
             ) != 0
         };
 
-        // Handle error
-        if !success {
-            return Err(Error::last_os_error());
-        }
+        if success || overlapped != ptr::null_mut() {
+            let state = unsafe { State::from_overlapped_raw(overlapped) };
+            let context = state.into_context();
 
-        // Get state and return event
-        let state = unsafe { State::from_overlapped_raw(overlapped) };
-        Ok(state.into_event(bytes))
+            if success {
+                Ok(context.into_event(bytes))
+            }
+            else {
+                Ok(context.into_error(bytes))
+            }
+        }
+        else {
+            Err(Error::os_error())
+        }
     }
 }
 
@@ -199,9 +210,15 @@ impl CustomContext {
 
 impl Context for CustomContext {
     //=======================================================================
-    fn to_event (self: Box<Self>, bytes: u32) -> Event {
-        let _ = bytes;
-        Event::Custom(self.custom)
+    fn into_event (self: Box<Self>, _: u32) -> Event {
+        self.custom.execute();
+        Event::Custom
+    }
+
+    //=======================================================================
+    fn into_error (self: Box<Self>, _: u32) -> Event {
+        self.custom.execute();
+        Event::Custom
     }
 }
 
@@ -213,7 +230,6 @@ impl Context for CustomContext {
 ***/
 
 //===========================================================================
-#[allow(dead_code)]
 pub fn associate (queue: &Queue, handle: Handle) -> Result<(), Error> {
     let success = unsafe {
         sys::CreateIoCompletionPort(
@@ -228,7 +244,7 @@ pub fn associate (queue: &Queue, handle: Handle) -> Result<(), Error> {
         Ok(())
     }
     else {
-        Err(Error::last_os_error())
+        Err(Error::os_error())
     }
 }
 
@@ -250,7 +266,7 @@ mod tests {
     }
 
     impl Custom for TestEvent {
-        fn execute (&mut self) {
+        fn execute (self: Box<Self>) {
             assert_eq!(NUMBER, self.n);
         }
     }
@@ -273,11 +289,9 @@ mod tests {
 
         let event = queue.dequeue();
         assert!(event.is_ok());
-        if let Event::Custom(mut event) = event.unwrap() {
-            event.execute();
-        }
-        else {
-            panic!();
+        match event.unwrap() {
+            Event::Custom => {},
+            _ => panic!("Expected Event::Custom"),
         }
     }
 }

@@ -48,6 +48,7 @@ impl HandleExt for Handle {
 *
 ***/
 
+#[derive(Debug)]
 pub struct Socket {
     handle: Handle,
 }
@@ -69,8 +70,8 @@ impl Socket {
     //=======================================================================
     pub fn new_from_family (family: AddrFamily) -> Result<Socket, Error> {
         match family {
-            AddrFamily::V4 => Socket::new_v4(),
-            AddrFamily::V6 => Socket::new_v6(),
+            AddrFamily::Ipv4 => Socket::new_v4(),
+            AddrFamily::Ipv6 => Socket::new_v6(),
         }
     }
 
@@ -99,7 +100,7 @@ impl Socket {
         };
 
         if socket == sys::INVALID_SOCKET {
-            Err(Socket::get_last_error())
+            Err(Socket::last_error())
         }
         else {
             Ok(Socket {
@@ -144,18 +145,18 @@ impl Socket {
 
     //=======================================================================
     pub fn listen (&self) -> Result<(), Error> {
-        let code = unsafe {
+        let success = unsafe {
             sys::listen(
                 self.handle.to_socket(),
                 sys::SOMAXCONN
             )
-        };
+        } == 0;
 
-        if code == 0 {
+        if success {
             Ok(())
         }
         else {
-            Err(Error::from_os_error_code(code))
+            Err(Socket::last_error())
         }
     }
 
@@ -168,13 +169,13 @@ impl Socket {
     }
 
     //=======================================================================
-    pub fn get_last_error_code () -> i32 {
+    pub fn last_error_code () -> i32 {
         unsafe { sys::WSAGetLastError() }
     }
 
     //=======================================================================
-    pub fn get_last_error () -> Error {
-        Error::from_os_error_code(Socket::get_last_error_code())
+    pub fn last_error () -> Error {
+        Error::from_os_error_code(Socket::last_error_code())
     }
 }
 

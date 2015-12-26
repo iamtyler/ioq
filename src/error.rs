@@ -36,8 +36,11 @@ impl Error {
     }
 
     //=======================================================================
-    pub fn last_os_error () -> Error {
-        Error::from_os_error_code(sys::last_error_code())
+    pub fn os_error_code (&self) -> Option<i32> {
+        match self.inner {
+            Inner::Os(c) => Some(c),
+            Inner::Custom(..) => None,
+        }
     }
 
     //=======================================================================
@@ -46,11 +49,8 @@ impl Error {
     }
 
     //=======================================================================
-    pub fn os_error_code (&self) -> Option<i32> {
-        match self.inner {
-            Inner::Os(c) => Some(c),
-            Inner::Custom(..) => None,
-        }
+    pub fn os_error () -> Error {
+        Error::from_os_error_code(sys::last_error_code())
     }
 
     //=======================================================================

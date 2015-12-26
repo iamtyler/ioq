@@ -39,7 +39,7 @@ impl Handle {
             Ok(())
         }
         else {
-            Err(Error::last_os_error())
+            Err(Error::os_error())
         }
     }
 }

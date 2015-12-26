@@ -36,6 +36,7 @@ const ADDRS_BUFFER_BYTES: usize = ADDR_BUFFER_BYTES * 2;
 *
 ***/
 
+#[derive(Debug)]
 pub struct TcpStream {
     socket: Socket,
     local: SocketAddr,
@@ -67,12 +68,6 @@ impl TcpStream {
 
     //=======================================================================
     pub fn close (self) {
-    }
-}
-
-impl Drop for TcpStream {
-    fn drop (&mut self) {
-        self.socket.close();
     }
 }
 
@@ -122,22 +117,11 @@ impl TcpListener {
     }
 
     //=======================================================================
-    pub fn close (&mut self) {
-        self.socket.close();
-    }
-
-    //=======================================================================
-    pub fn accept (&mut self) -> Result<(), Error> {
+    pub fn accept (&self) -> Result<(), Error> {
         match AcceptContext::new(self.addr.family()) {
             Ok(context) => context.accept(&self.socket),
-            Err(error) => Err(error)
+            Err(error) => Err(error),
         }
-    }
-}
-
-impl Drop for TcpListener {
-    fn drop (&mut self) {
-        self.socket.close();
     }
 }
 
@@ -171,8 +155,8 @@ impl AcceptContext {
     //=======================================================================
     pub fn accept (self: Box<Self>, socket: &Socket) -> Result<(), Error> {
         let raw = Box::into_raw(self);
-        let state = queue::State::new(unsafe { Box::from_raw(raw) });
-        let context: &Self = unsafe { mem::transmute(raw) };
+        let state = Box::new(queue::State::new(unsafe { Box::from_raw(raw) }));
+        let context = unsafe { &*raw };//: &Self = unsafe { mem::transmute(raw) };
 
         let success = unsafe {
             sys::AcceptEx(
@@ -188,25 +172,33 @@ impl AcceptContext {
         };
 
         if success == 0 {
-            let code = Socket::get_last_error_code();
+            let code = Socket::last_error_code();
             if code != sys::ERROR_IO_PENDING {
                 return Err(Error::from_os_error_code(code));
             }
         }
-        
+
+        let _ = Box::into_raw(state);
         Ok(())
     }
 }
 
 impl queue::Context for AcceptContext {
-    fn to_event (self: Box<Self>, _: u32) -> queue::Event {
+    //=======================================================================
+    fn into_event (self: Box<Self>, _: u32) -> queue::Event {
         let stream = TcpStream {
             socket: self.socket,
-            local: SocketAddr::new(IpAddr::V4(net::Ipv4Addr::new(0, 0, 0, 0)), 1234),
-            remote: SocketAddr::new(IpAddr::V4(net::Ipv4Addr::new(0, 0, 0, 0)), 1234),
+            local: SocketAddr::new(IpAddr::V4(net::Ipv4Addr::new(0, 0, 0, 0)), 0),
+            remote: SocketAddr::new(IpAddr::V4(net::Ipv4Addr::new(0, 0, 0, 0)), 0),
         };
 
-        queue::Event::TcpConnect(stream)
+        queue::Event::TcpAccept(Ok(stream))
+    }
+
+    //=======================================================================
+    fn into_error (self: Box<Self>, _: u32) -> queue::Event {
+        let event = queue::Event::TcpAccept(Err(Socket::last_error()));
+        event
     }
 }
 
