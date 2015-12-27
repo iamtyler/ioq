@@ -25,9 +25,14 @@ use libc;
 pub type HANDLE = *mut libc::c_void;
 pub type SOCKET = usize;
 
+
+pub type DWORD = u32;
 pub type BOOL = i32;
 pub type ULONG_PTR = *mut u32;
 pub type VOID_PTR = *mut libc::c_void;
+pub type LPCVOID = *const libc::c_void;
+pub type LPTSTR = *mut u8;
+pub type va_list = *mut libc::c_char;
 
 
 /****************************************************************************
@@ -55,6 +60,12 @@ pub const NULL_HANDLE: HANDLE = 0 as HANDLE;
 pub const INFINITE: u32 = 0xFFFFFFFF;
 
 pub const ERROR_IO_PENDING: i32 = 997;
+
+pub const FORMAT_MESSAGE_FROM_SYSTEM: u32 = 0x00001000;
+pub const FORMAT_MESSAGE_IGNORE_INSERTS: u32 = 0x00000200;
+pub const FORMAT_MESSAGE_MAX_WIDTH_MASK: u32 = 0x000000FF;
+
+pub const ERROR_INSUFFICIENT_BUFFER: i32 = 122;
 
 
 /****************************************************************************
@@ -195,6 +206,18 @@ extern "stdcall" {
     pub fn CloseHandle (
         hObject: HANDLE // IN
     ) -> BOOL;
+
+    pub fn GetLastError () -> u32;
+
+    pub fn FormatMessageA (
+        dwFlags: DWORD,             // IN
+        lpSource: LPCVOID,          // IN OPT
+        dwMessageId: DWORD,         // IN
+        dwLanguageId: DWORD,        // IN
+        lpBuffer: LPTSTR,           // OUT
+        nSize: DWORD,               // IN
+        Arguments: *const va_list   // IN OPT
+    ) -> DWORD;
 
     pub fn CreateIoCompletionPort (
         FileHandle: HANDLE,             // IN
