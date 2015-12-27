@@ -158,6 +158,8 @@ mod sys {
     const FORMAT_MESSAGE_IGNORE_INSERTS: u32 = 0x00000200;
     const FORMAT_MESSAGE_MAX_WIDTH_MASK: u32 = 0x000000FF;
 
+    const ERROR_INSUFFICIENT_BUFFER: i32 = 122;
+
     #[link(name = "kernel32")]
     extern "stdcall" {
         fn GetLastError () -> u32;
@@ -173,7 +175,8 @@ mod sys {
         ) -> DWORD;
     }
 
-    thread_local!(static MESSAGE: RefCell<[u8; 64]> = RefCell::new([0; 64]));
+    const MESSAGE_BYTES: usize = 128;
+    thread_local!(static MESSAGE: RefCell<[u8; MESSAGE_BYTES]> = RefCell::new([0; MESSAGE_BYTES]));
 
     //=======================================================================
     pub fn last_error_code () -> i32 {
@@ -185,7 +188,7 @@ mod sys {
         let mut message: &str = "";
 
         MESSAGE.with(|m| {
-            let mut buffer: &mut [u8] = &mut*m.borrow_mut();
+            let mut buffer: &mut [u8] = &mut *m.borrow_mut();
 
             let count = unsafe {
                 FormatMessageA(
@@ -203,6 +206,10 @@ mod sys {
 
             message = unsafe { mem::transmute::<&[u8], &str>(&buffer[..count as usize]) };
         });
+
+        if message.len() == 0 && last_error_code() == ERROR_INSUFFICIENT_BUFFER {
+            message = "[MESSAGE buffer not large enough]";
+        }
 
         return message;
     }

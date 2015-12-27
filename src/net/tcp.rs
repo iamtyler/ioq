@@ -186,6 +186,8 @@ impl AcceptContext {
 impl queue::Context for AcceptContext {
     //=======================================================================
     fn into_event (self: Box<Self>, _: u32) -> queue::Event {
+        // TODO: read addresses
+
         let stream = TcpStream {
             socket: self.socket,
             local: SocketAddr::new(IpAddr::V4(net::Ipv4Addr::new(0, 0, 0, 0)), 0),

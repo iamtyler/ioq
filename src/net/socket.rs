@@ -127,19 +127,19 @@ impl Socket {
         }
 
         // Bind socket to address
-        let code = unsafe {
+        let success = unsafe {
             sys::bind(
                 self.handle.to_socket(),
                 sockaddr,
                 mem::size_of::<sys::sockaddr_in>() as i32
-            )
+            ) == 0
         };
 
-        if code == 0 {
+        if success {
             Ok(())
         }
         else {
-            Err(Error::from_os_error_code(code))
+            Err(Socket::last_error())
         }
     }
 
