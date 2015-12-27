@@ -156,7 +156,7 @@ impl AcceptContext {
     pub fn accept (self: Box<Self>, socket: &Socket) -> Result<(), Error> {
         let raw = Box::into_raw(self);
         let state = Box::new(queue::State::new(unsafe { Box::from_raw(raw) }));
-        let context = unsafe { &*raw };//: &Self = unsafe { mem::transmute(raw) };
+        let context = unsafe { &*raw };
 
         let success = unsafe {
             sys::AcceptEx(
@@ -168,16 +168,17 @@ impl AcceptContext {
                 ADDR_BUFFER_BYTES as u32,
                 ptr::null_mut(),
                 state.overlapped_raw()
-            )
+            ) != 0
         };
 
-        if success == 0 {
+        if !success {
             let code = Socket::last_error_code();
             if code != sys::ERROR_IO_PENDING {
                 return Err(Error::from_os_error_code(code));
             }
         }
 
+        // Prevent deallocation of boxed state
         let _ = Box::into_raw(state);
         Ok(())
     }

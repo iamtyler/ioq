@@ -38,25 +38,8 @@ fn main () {
     // Queue a TCP accept event
     listener.accept().unwrap();
 
-    // Dequeue events
-    loop {
-        let event = queue.dequeue().unwrap();
-        match event {
-            ioq::Event::TcpAccept(result) => match result {
-                Ok(stream) => {
-                    println!("stream: {:?}", stream);
-                    listener.accept().unwrap();
-                },
-                Err(error) => {
-                    println!("error: {:?}", error);
-                    break;
-                },
-            },
-            _ => {
-                panic!("Unexpected event");
-            },
-        }
-    }
+    // Dequeue event
+    println!("event: {:?}", queue.dequeue().unwrap());
 
     // Ensure init guard survives until the end
     let _ = init;

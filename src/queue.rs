@@ -38,6 +38,7 @@ pub trait Custom {
 *
 ***/
 
+#[derive(Debug)]
 pub enum Event {
     Custom,
     TcpAccept(Result<net::TcpStream, Error>),
