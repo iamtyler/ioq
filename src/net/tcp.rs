@@ -57,12 +57,12 @@ pub struct TcpStreamInner {
 
 impl TcpStreamInner {
     //=======================================================================
-    pub fn receive (&self, buffer: Box<[u8]>) {
+    fn receive (&self, buffer: Box<[u8]>) {
         let _ = buffer;
     }
 
     //=======================================================================
-    pub fn send (&self, data: Box<[u8]>) {
+    fn send (&self, data: Box<[u8]>) {
         let _ = data;
     }
 }
@@ -83,12 +83,20 @@ struct ReceiveContext {
 impl queue::Context for ReceiveContext {
     //=======================================================================
     fn into_event (self: Box<Self>, _: u32) -> queue::Event {
-        queue::Event::TcpReceive(self.stream.clone(), self.buffer, Err(Error::unknown()))
+        queue::Event::TcpReceive(
+            self.stream.clone(),
+            self.buffer,
+            Err(Error::unknown())
+        )
     }
 
     //=======================================================================
     fn into_error (self: Box<Self>, _: u32) -> queue::Event {
-        queue::Event::TcpReceive(self.stream.clone(), self.buffer, Err(Error::unknown()))
+        queue::Event::TcpReceive(
+            self.stream.clone(),
+            self.buffer,
+            Err(Error::unknown())
+        )
     }
 }
 
@@ -111,7 +119,9 @@ impl TcpListener {
     pub fn addr (&self) -> SocketAddr { self.inner.lock().unwrap().addr }
 
     //=======================================================================
-    pub fn new (addr: SocketAddr, queue: &queue::Queue) -> Result<TcpListener, Error> {
+    pub fn new (addr: SocketAddr, queue: &queue::Queue)
+        -> Result<TcpListener, Error>
+    {
         // Create socket
         let socket = Socket::new_from_addr(addr.ip());
         if let Err(error) = socket {
@@ -155,7 +165,7 @@ struct TcpListenerInner {
 
 impl TcpListenerInner {
     //=======================================================================
-    pub fn accept (&self, listener: TcpListener) -> Result<(), Error> {
+    fn accept (&self, listener: TcpListener) -> Result<(), Error> {
         // Create socket
         let socket = Socket::new_from_family(self.addr.family());
         if let Err(error) = socket {

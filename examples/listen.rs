@@ -27,16 +27,9 @@ fn main () {
     let port = 5000;
     let addr = ioq::net::SocketAddr::new(ip, port);
 
-    // Create a TCP listener
-    let listener;
-    match ioq::net::TcpListener::new(addr, &queue) {
-        Ok(l) => listener = l,
-        Err(e) => panic!("listen error: {}", e),
-    }
-    println!("listening at {}", listener.addr());
-
-    // Queue a TCP accept event
-    listener.accept().unwrap();
+    // Create a TCP listener and accept
+    ioq::net::TcpListener::new(addr, &queue).unwrap().accept().unwrap();
+    println!("listening at {}", addr);
 
     // Dequeue event
     println!("event: {:?}", queue.dequeue().unwrap());

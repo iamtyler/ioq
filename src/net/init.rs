@@ -64,7 +64,6 @@ mod tests {
 
     #[test]
     fn init_guard () {
-        let guard = initialize();
-        assert!(guard.is_ok());
+        initialize().unwrap();
     }
 }

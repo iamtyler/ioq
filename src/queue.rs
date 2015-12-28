@@ -76,7 +76,9 @@ impl State {
     }
 
     //=======================================================================
-    unsafe fn from_overlapped_raw (overlapped: *mut sys::OVERLAPPED) -> Box<State> {
+    unsafe fn from_overlapped_raw (overlapped: *mut sys::OVERLAPPED)
+        -> Box<State>
+    {
         let state: *mut State = mem::transmute(overlapped);
         Box::from_raw(state)
     }
@@ -203,7 +205,7 @@ struct CustomContext {
 
 impl CustomContext {
     //=======================================================================
-    pub fn new (custom: Box<Custom>) -> CustomContext {
+    fn new (custom: Box<Custom>) -> CustomContext {
         CustomContext {
             custom: custom
         }
@@ -276,22 +278,18 @@ mod tests {
     //=======================================================================
     #[test]
     fn create_queue () {
-        assert!(Queue::new().is_ok());
+        Queue::new().unwrap();
     }
 
     //=======================================================================
     #[test]
     fn custom_event () {
-        let queue = Queue::new();
-        assert!(queue.is_ok());
-        let queue = queue.unwrap();
+        let queue = Queue::new().unwrap();
 
         let event = Box::new(TestEvent { n: NUMBER });
-        assert!(queue.enqueue(event).is_ok());
+        queue.enqueue(event).unwrap();
 
-        let event = queue.dequeue();
-        assert!(event.is_ok());
-        match event.unwrap() {
+        match queue.dequeue().unwrap() {
             Event::Custom => {},
             _ => panic!("Expected Event::Custom"),
         }
