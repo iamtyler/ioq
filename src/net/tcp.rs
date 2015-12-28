@@ -8,7 +8,6 @@
 ***/
 
 use std::mem;
-use std::net;
 use std::ptr;
 
 use sys;
@@ -16,7 +15,7 @@ use queue;
 use error::Error;
 
 use super::socket::Socket;
-use super::addr::{SocketAddr, IpAddr, AddrFamily};
+use super::addr::{SocketAddr, AddrFamily};
 
 
 /****************************************************************************
@@ -24,10 +23,6 @@ use super::addr::{SocketAddr, IpAddr, AddrFamily};
 *   Constants
 *
 ***/
-
-const ADDR_BYTES: usize = 16; // size of sys::sockaddr_in
-const ADDR_BUFFER_BYTES: usize = ADDR_BYTES + 16;
-const ADDRS_BUFFER_BYTES: usize = ADDR_BUFFER_BYTES * 2;
 
 
 /****************************************************************************
@@ -132,9 +127,39 @@ impl TcpListener {
 *
 ***/
 
+#[repr(C)]
+struct AcceptAddr {
+    addr: sys::sockaddr_storage,
+    __pad: [u8; sys::SOCKADDR_STORAGE_EXTRA_BYTES],
+}
+
+impl AcceptAddr {
+    fn new () -> AcceptAddr {
+        AcceptAddr {
+            addr: sys::sockaddr_storage::new(),
+            __pad: [0; sys::SOCKADDR_STORAGE_EXTRA_BYTES],
+        }
+    }
+}
+
+#[repr(C)]
+struct AcceptAddrs {
+    local: AcceptAddr,
+    remote: AcceptAddr,
+}
+
+impl AcceptAddrs {
+    fn new () -> AcceptAddrs {
+        AcceptAddrs {
+            local: AcceptAddr::new(),
+            remote: AcceptAddr::new(),
+        }
+    }
+}
+
 struct AcceptContext {
     socket: Socket,
-    addrs: [u8; ADDRS_BUFFER_BYTES],
+    addrs: AcceptAddrs,
 }
 
 impl AcceptContext {
@@ -148,7 +173,7 @@ impl AcceptContext {
 
         Ok(Box::new(AcceptContext {
             socket: socket,
-            addrs: [0; ADDRS_BUFFER_BYTES],
+            addrs: AcceptAddrs::new(),
         }))
     }
 
@@ -164,8 +189,8 @@ impl AcceptContext {
                 context.socket.to_raw(),
                 mem::transmute(&context.addrs),
                 0,
-                ADDR_BUFFER_BYTES as u32,
-                ADDR_BUFFER_BYTES as u32,
+                mem::size_of::<AcceptAddr>() as u32,
+                mem::size_of::<AcceptAddr>() as u32,
                 ptr::null_mut(),
                 state.overlapped_raw()
             ) != 0
@@ -187,12 +212,13 @@ impl AcceptContext {
 impl queue::Context for AcceptContext {
     //=======================================================================
     fn into_event (self: Box<Self>, _: u32) -> queue::Event {
-        // TODO: read addresses
+        let local = self.addrs.local.addr.get_addr().unwrap();
+        let remote = self.addrs.remote.addr.get_addr().unwrap();
 
         let stream = TcpStream {
             socket: self.socket,
-            local: SocketAddr::new(IpAddr::V4(net::Ipv4Addr::new(0, 0, 0, 0)), 0),
-            remote: SocketAddr::new(IpAddr::V4(net::Ipv4Addr::new(0, 0, 0, 0)), 0),
+            local: local,
+            remote: remote,
         };
 
         queue::Event::TcpAccept(Ok(stream))

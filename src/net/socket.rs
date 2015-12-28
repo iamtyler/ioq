@@ -117,11 +117,11 @@ impl Socket {
 
         match addr {
             SocketAddr::V4(addr) => {
-                sockaddr_in = sys::sockaddr_in::new(addr);
+                sockaddr_in = sys::sockaddr_in::from_addr(addr);
                 sockaddr = unsafe { mem::transmute(&sockaddr_in) };
             },
             SocketAddr::V6(addr) => {
-                sockaddr_in6 = sys::sockaddr_in6::new(addr);
+                sockaddr_in6 = sys::sockaddr_in6::from_addr(addr);
                 sockaddr = unsafe { mem::transmute(&sockaddr_in6) };
             }
         }

@@ -10,10 +10,12 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
-use std::net;
+use std::mem;
 use std::ptr;
 
 use libc;
+
+use net;
 
 
 /****************************************************************************
@@ -24,13 +26,13 @@ use libc;
 
 pub type HANDLE = *mut libc::c_void;
 pub type SOCKET = usize;
-
-
 pub type DWORD = u32;
 pub type BOOL = i32;
 pub type ULONG_PTR = *mut u32;
 pub type VOID_PTR = *mut libc::c_void;
 pub type LPCVOID = *const libc::c_void;
+pub type PVOID = *mut libc::c_void;
+pub type LPINT = *mut i32;
 pub type LPTSTR = *mut u8;
 pub type va_list = *mut libc::c_char;
 
@@ -67,6 +69,8 @@ pub const FORMAT_MESSAGE_MAX_WIDTH_MASK: u32 = 0x000000FF;
 
 pub const ERROR_INSUFFICIENT_BUFFER: i32 = 122;
 
+pub const SOCKADDR_STORAGE_EXTRA_BYTES: usize = 16;
+
 
 /****************************************************************************
 *
@@ -88,6 +92,7 @@ pub struct WSAData {
 }
 
 impl WSAData {
+    //=======================================================================
     pub fn new () -> WSAData {
         WSAData {
             wVersion: 0,
@@ -109,6 +114,7 @@ impl WSAData {
 ***/
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct sockaddr_in {
     pub sin_family: i16,
     pub sin_port: u16,
@@ -117,7 +123,8 @@ pub struct sockaddr_in {
 }
 
 impl sockaddr_in {
-    pub fn new (addr: net::SocketAddrV4) -> sockaddr_in {
+    //=======================================================================
+    pub fn from_addr (addr: net::SocketAddrV4) -> sockaddr_in {
         sockaddr_in {
             sin_family: AF_INET as i16,
             sin_port: endian::net_16(addr.port()),
@@ -135,6 +142,7 @@ impl sockaddr_in {
 ***/
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct sockaddr_in6 {
     pub sin6_family: i16,
     pub sin6_port: u16,
@@ -144,7 +152,8 @@ pub struct sockaddr_in6 {
 }
 
 impl sockaddr_in6 {
-    pub fn new (addr: net::SocketAddrV6) -> sockaddr_in6 {
+    //=======================================================================
+    pub fn from_addr (addr: net::SocketAddrV6) -> sockaddr_in6 {
         let segments = addr.ip().segments();
         sockaddr_in6 {
             sin6_family: AF_INET6 as i16,
@@ -161,6 +170,77 @@ impl sockaddr_in6 {
                 endian::net_16(segments[7]),
             ],
             sin6_scope_id: 0, // TODO: proper value
+        }
+    }
+}
+
+
+/****************************************************************************
+*
+*   sockaddr_storage
+*
+***/
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct sockaddr_storage {
+    pub ss_family: u16,
+    pub __ss_pad1: [u8; 6],
+    pub __ss_align: u64,
+    pub __ss_pad2: [u8; 16],
+    pub __ss_pad3: [u8; 32],
+    pub __ss_pad4: [u8; 32],
+    pub __ss_pad5: [u8; 32],
+}
+
+impl sockaddr_storage {
+    //=======================================================================
+    pub fn new () -> sockaddr_storage {
+        sockaddr_storage {
+            ss_family: 0,
+            __ss_pad1: [0; 6],
+            __ss_align: 0,
+            __ss_pad2: [0; 16],
+            __ss_pad3: [0; 32],
+            __ss_pad4: [0; 32],
+            __ss_pad5: [0; 32],
+        }
+    }
+
+    //=======================================================================
+    pub fn get_addr (&self) -> Option<net::SocketAddr> {
+        match self.ss_family as i32 {
+            AF_INET => {
+                let addr: &sockaddr_in = unsafe { mem::transmute(self) };
+                let octets = addr.sin_addr;
+                let ip = net::Ipv4Addr::new(
+                    octets[0],
+                    octets[1],
+                    octets[2],
+                    octets[3]
+                );
+                let port = endian::net_16(addr.sin_port);
+
+                Some(net::SocketAddr::new(net::IpAddr::V4(ip), port))
+            },
+            AF_INET6 => {
+                let addr: &sockaddr_in6 = unsafe { mem::transmute(self) };
+                let segments = addr.sin6_addr;
+                let ip = net::Ipv6Addr::new(
+                    segments[0],
+                    segments[1],
+                    segments[2],
+                    segments[3],
+                    segments[4],
+                    segments[5],
+                    segments[6],
+                    segments[7]
+                );
+                let port = endian::net_16(addr.sin6_port);
+
+                Some(net::SocketAddr::new(net::IpAddr::V6(ip), port))
+            },
+            _ => None,
         }
     }
 }
@@ -297,7 +377,7 @@ extern "stdcall" {
 ***/
 
 #[cfg(target_endian = "little")]
-mod endian {
+pub mod endian {
     //=======================================================================
     #[inline]
     pub fn net_16 (n: u16) -> u16 {
@@ -306,7 +386,7 @@ mod endian {
 }
 
 #[cfg(target_endian = "big")]
-mod endian {
+pub mod endian {
     //=======================================================================
     #[inline]
     pub fn net_16 (n: u16) {
