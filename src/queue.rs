@@ -41,7 +41,8 @@ pub trait Custom {
 #[derive(Debug)]
 pub enum Event {
     Custom,
-    TcpAccept(Result<net::TcpStream, Error>),
+    TcpAccept(net::TcpListener, Result<net::TcpStream, Error>),
+    TcpReceive(net::TcpStream, Box<[u8]>, Result<(), Error>),
 }
 
 

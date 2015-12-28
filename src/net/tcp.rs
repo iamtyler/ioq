@@ -9,20 +9,14 @@
 
 use std::mem;
 use std::ptr;
+use std::sync::{Arc, Mutex};
 
 use sys;
 use queue;
 use error::Error;
 
 use super::socket::Socket;
-use super::addr::{SocketAddr, AddrFamily};
-
-
-/****************************************************************************
-*
-*   Constants
-*
-***/
+use super::addr::SocketAddr;
 
 
 /****************************************************************************
@@ -31,28 +25,39 @@ use super::addr::{SocketAddr, AddrFamily};
 *
 ***/
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TcpStream {
+    inner: Arc<Mutex<TcpStreamInner>>,
+}
+
+unsafe impl Sync for TcpStream {}
+unsafe impl Send for TcpStream {}
+
+impl TcpStream {
+    pub fn addr_local (&self) -> SocketAddr { self.inner.lock().unwrap().local }
+    pub fn addr_remote (&self) -> SocketAddr { self.inner.lock().unwrap().remote }
+
+    //=======================================================================
+    pub fn receive (&self, buffer: Box<[u8]>) {
+        self.inner.lock().unwrap().receive(buffer);
+    }
+
+    //=======================================================================
+    pub fn send (&self, buffer: Box<[u8]>) {
+        self.inner.lock().unwrap().send(buffer);
+    }
+}
+
+#[derive(Debug)]
+pub struct TcpStreamInner {
     socket: Socket,
     local: SocketAddr,
     remote: SocketAddr,
 }
 
-impl TcpStream {
-    pub fn addr_local (&self) -> &SocketAddr { &self.local }
-    pub fn addr_remote (&self) -> &SocketAddr { &self.remote }
-
-    // //=======================================================================
-    // fn new (remote: SocketAddr, queue: queue::Queue) -> TcpStream {
-    //     TcpStream {
-    //         socket: socket,
-    //         local: local,
-    //         remote: remote,
-    //     }
-    // }
-
+impl TcpStreamInner {
     //=======================================================================
-    pub fn receive (&self, buffer : Box<[u8]>) {
+    pub fn receive (&self, buffer: Box<[u8]>) {
         let _ = buffer;
     }
 
@@ -60,9 +65,30 @@ impl TcpStream {
     pub fn send (&self, data: Box<[u8]>) {
         let _ = data;
     }
+}
+
+
+/****************************************************************************
+*
+*   ReceiveContext
+*
+***/
+
+#[allow(dead_code)]
+struct ReceiveContext {
+    stream: TcpStream,
+    buffer: Box<[u8]>,
+}
+
+impl queue::Context for ReceiveContext {
+    //=======================================================================
+    fn into_event (self: Box<Self>, _: u32) -> queue::Event {
+        queue::Event::TcpReceive(self.stream.clone(), self.buffer, Err(Error::unknown()))
+    }
 
     //=======================================================================
-    pub fn close (self) {
+    fn into_error (self: Box<Self>, _: u32) -> queue::Event {
+        queue::Event::TcpReceive(self.stream.clone(), self.buffer, Err(Error::unknown()))
     }
 }
 
@@ -73,13 +99,16 @@ impl TcpStream {
 *
 ***/
 
+#[derive(Debug, Clone)]
 pub struct TcpListener {
-    socket: Socket,
-    addr: SocketAddr,
+    inner: Arc<Mutex<TcpListenerInner>>,
 }
 
+unsafe impl Sync for TcpListener {}
+unsafe impl Send for TcpListener {}
+
 impl TcpListener {
-    pub fn addr (&self) -> SocketAddr { self.addr }
+    pub fn addr (&self) -> SocketAddr { self.inner.lock().unwrap().addr }
 
     //=======================================================================
     pub fn new (addr: SocketAddr, queue: &queue::Queue) -> Result<TcpListener, Error> {
@@ -98,104 +127,70 @@ impl TcpListener {
             return Err(error);
         }
 
-        // Create listener
-        let listener = TcpListener {
-            socket: socket,
-            addr: addr,
-        };
-
         // Associate with queue
-        match queue::associate(queue, listener.socket.handle()) {
-            Ok(..) => Ok(listener),
+        match queue::associate(queue, socket.handle()) {
+            Ok(..) => {
+                Ok(TcpListener {
+                    inner: Arc::new(Mutex::new(TcpListenerInner {
+                        socket: socket,
+                        addr: addr,
+                    }))
+                })
+            },
             Err(error) => Err(error),
         }
     }
 
     //=======================================================================
     pub fn accept (&self) -> Result<(), Error> {
-        match AcceptContext::new(self.addr.family()) {
-            Ok(context) => context.accept(&self.socket),
-            Err(error) => Err(error),
-        }
+        self.inner.lock().unwrap().accept(self.clone())
     }
 }
 
-
-/****************************************************************************
-*
-*   AcceptContext
-*
-***/
-
-#[repr(C)]
-struct AcceptAddr {
-    addr: sys::sockaddr_storage,
-    __pad: [u8; sys::SOCKADDR_STORAGE_EXTRA_BYTES],
-}
-
-impl AcceptAddr {
-    fn new () -> AcceptAddr {
-        AcceptAddr {
-            addr: sys::sockaddr_storage::new(),
-            __pad: [0; sys::SOCKADDR_STORAGE_EXTRA_BYTES],
-        }
-    }
-}
-
-#[repr(C)]
-struct AcceptAddrs {
-    local: AcceptAddr,
-    remote: AcceptAddr,
-}
-
-impl AcceptAddrs {
-    fn new () -> AcceptAddrs {
-        AcceptAddrs {
-            local: AcceptAddr::new(),
-            remote: AcceptAddr::new(),
-        }
-    }
-}
-
-struct AcceptContext {
+#[derive(Debug)]
+struct TcpListenerInner {
     socket: Socket,
-    addrs: AcceptAddrs,
+    addr: SocketAddr,
 }
 
-impl AcceptContext {
+impl TcpListenerInner {
     //=======================================================================
-    pub fn new (family: AddrFamily) -> Result<Box<AcceptContext>, Error> {
-        let socket = Socket::new_from_family(family);
+    pub fn accept (&self, listener: TcpListener) -> Result<(), Error> {
+        // Create socket
+        let socket = Socket::new_from_family(self.addr.family());
         if let Err(error) = socket {
             return Err(error);
         }
-        let socket = socket.unwrap();
 
-        Ok(Box::new(AcceptContext {
-            socket: socket,
-            addrs: AcceptAddrs::new(),
-        }))
-    }
+        // Create boxed context
+        let context = Box::new(AcceptContext {
+            listener: listener,
+            socket: socket.unwrap(),
+            addrs: AddrBuffers::new(),
+        });
 
-    //=======================================================================
-    pub fn accept (self: Box<Self>, socket: &Socket) -> Result<(), Error> {
-        let raw = Box::into_raw(self);
-        let state = Box::new(queue::State::new(unsafe { Box::from_raw(raw) }));
-        let context = unsafe { &*raw };
+        // Get raw values from context for passing to OS API
+        let socket = context.socket.to_raw();
+        let addrs: sys::LPVOID = unsafe { mem::transmute(&context.addrs) };
 
+        // Create boxed state
+        let state = Box::new(queue::State::new(context));
+
+        // Call OS API
         let success = unsafe {
             sys::AcceptEx(
-                socket.to_raw(),
-                context.socket.to_raw(),
-                mem::transmute(&context.addrs),
+                self.socket.to_raw(),
+                socket,
+                addrs,
                 0,
-                mem::size_of::<AcceptAddr>() as u32,
-                mem::size_of::<AcceptAddr>() as u32,
+                mem::size_of::<AddrBuffer>() as u32,
+                mem::size_of::<AddrBuffer>() as u32,
                 ptr::null_mut(),
                 state.overlapped_raw()
             ) != 0
         };
 
+        // Handle error
         if !success {
             let code = Socket::last_error_code();
             if code != sys::ERROR_IO_PENDING {
@@ -209,25 +204,86 @@ impl AcceptContext {
     }
 }
 
+
+/****************************************************************************
+*
+*   AcceptContext
+*
+***/
+
+struct AcceptContext {
+    listener: TcpListener,
+    socket: Socket,
+    addrs: AddrBuffers,
+}
+
 impl queue::Context for AcceptContext {
     //=======================================================================
     fn into_event (self: Box<Self>, _: u32) -> queue::Event {
         let local = self.addrs.local.addr.get_addr().unwrap();
         let remote = self.addrs.remote.addr.get_addr().unwrap();
 
+        let listener = self.listener.clone();
         let stream = TcpStream {
-            socket: self.socket,
-            local: local,
-            remote: remote,
+            inner: Arc::new(Mutex::new(TcpStreamInner {
+                socket: self.socket,
+                local: local,
+                remote: remote,
+            })),
         };
 
-        queue::Event::TcpAccept(Ok(stream))
+        queue::Event::TcpAccept(listener, Ok(stream))
     }
 
     //=======================================================================
     fn into_error (self: Box<Self>, _: u32) -> queue::Event {
-        let event = queue::Event::TcpAccept(Err(Socket::last_error()));
-        event
+        queue::Event::TcpAccept(self.listener, Err(Socket::last_error()))
+    }
+}
+
+
+/****************************************************************************
+*
+*   AddrBuffer
+*
+***/
+
+#[repr(C)]
+struct AddrBuffer {
+    addr: sys::sockaddr_storage,
+    __extra: [u8; sys::SOCKADDR_STORAGE_EXTRA_BYTES],
+}
+
+impl AddrBuffer {
+    //=======================================================================
+    fn new () -> AddrBuffer {
+        AddrBuffer {
+            addr: sys::sockaddr_storage::new(),
+            __extra: [0; sys::SOCKADDR_STORAGE_EXTRA_BYTES],
+        }
+    }
+}
+
+
+/****************************************************************************
+*
+*   AddrBuffers
+*
+***/
+
+#[repr(C)]
+struct AddrBuffers {
+    local: AddrBuffer,
+    remote: AddrBuffer,
+}
+
+impl AddrBuffers {
+    //=======================================================================
+    fn new () -> AddrBuffers {
+        AddrBuffers {
+            local: AddrBuffer::new(),
+            remote: AddrBuffer::new(),
+        }
     }
 }
 

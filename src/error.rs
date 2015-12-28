@@ -41,6 +41,11 @@ impl Error {
     }
 
     //=======================================================================
+    pub fn unknown () -> Error {
+        Error::new(ErrorKind::Unknown, "")
+    }
+
+    //=======================================================================
     pub fn os_error_code (&self) -> Option<i32> {
         match self.inner {
             Inner::Os(c) => Some(c),

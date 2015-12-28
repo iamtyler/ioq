@@ -113,7 +113,7 @@ impl Socket {
     pub fn bind (&self, addr: SocketAddr) -> Result<(), Error> {
         let sockaddr_in;
         let sockaddr_in6;
-        let sockaddr: sys::VOID_PTR;
+        let sockaddr: sys::LPVOID;
 
         match addr {
             SocketAddr::V4(addr) => {

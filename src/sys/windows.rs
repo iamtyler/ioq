@@ -27,14 +27,18 @@ use net;
 pub type HANDLE = *mut libc::c_void;
 pub type SOCKET = usize;
 pub type DWORD = u32;
+pub type LPDWORD = *mut DWORD;
 pub type BOOL = i32;
 pub type ULONG_PTR = *mut u32;
-pub type VOID_PTR = *mut libc::c_void;
+pub type LPVOID = *mut libc::c_void;
 pub type LPCVOID = *const libc::c_void;
 pub type PVOID = *mut libc::c_void;
 pub type LPINT = *mut i32;
 pub type LPTSTR = *mut u8;
-pub type va_list = *mut libc::c_char;
+pub type VA_LIST = *mut libc::c_char;
+pub type LPWSABUF = *mut WSABUF;
+
+pub type WSAOVERLAPPED_COMPLETION_ROUTINE = extern "C" fn (DWORD, DWORD, *mut OVERLAPPED, DWORD);
 
 
 /****************************************************************************
@@ -252,8 +256,8 @@ impl sockaddr_storage {
 *
 ***/
 
-#[derive(Clone, Debug)]
 #[repr(C)]
+#[derive(Clone, Debug)]
 pub struct OVERLAPPED {
     pub Internal: ULONG_PTR,
     pub InternalHigh: ULONG_PTR,
@@ -263,6 +267,7 @@ pub struct OVERLAPPED {
 }
 
 impl OVERLAPPED {
+    //=======================================================================
     pub fn new () -> OVERLAPPED {
         OVERLAPPED {
             Internal: ptr::null_mut(),
@@ -270,6 +275,31 @@ impl OVERLAPPED {
             Offset: 0,
             OffsetHigh: 0,
             hEvent: NULL_HANDLE,
+        }
+    }
+}
+
+
+/****************************************************************************
+*
+*   WSABUF
+*
+***/
+
+#[allow(dead_code)] // TODO: remove
+#[repr(C)]
+pub struct WSABUF {
+    pub len: u32,
+    pub buf: *mut u8,
+}
+
+impl WSABUF {
+    //=======================================================================
+    #[allow(dead_code)] // TODO: remove
+    pub fn new (buffer: &mut [u8]) -> WSABUF {
+        WSABUF {
+            len: buffer.len() as u32,
+            buf: buffer.as_mut_ptr(),
         }
     }
 }
@@ -296,7 +326,7 @@ extern "stdcall" {
         dwLanguageId: DWORD,        // IN
         lpBuffer: LPTSTR,           // OUT
         nSize: DWORD,               // IN
-        Arguments: *const va_list   // IN OPT
+        Arguments: *const VA_LIST   // IN OPT
     ) -> DWORD;
 
     pub fn CreateIoCompletionPort (
@@ -326,7 +356,7 @@ extern "stdcall" {
 extern "stdcall" {
     pub fn bind (
         s: SOCKET,      // IN
-        name: VOID_PTR, // IN
+        name: LPVOID,   // IN
         namelen: i32    // IN
     ) -> i32;
 
@@ -360,13 +390,23 @@ extern "stdcall" {
     pub fn AcceptEx (
         sListenSocket: SOCKET,              // IN
         sAcceptSocket: SOCKET,              // IN
-        lpOutputBuffer: VOID_PTR,           // IN
+        lpOutputBuffer: LPVOID,             // IN
         dwReceveDataLength: u32,            // IN
         dwLocalAddressLength: u32,          // IN
         dwRemoteAddressLength: u32,         // IN
-        lpdwBytesReceived: *mut u32,        // OUT
+        lpdwBytesReceived: LPDWORD,         // OUT
         lpOverlapped: *mut OVERLAPPED       // IN
     ) -> i32;
+
+    // pub fn WSARecv (
+    //     s: SOCKET,                                              // IN
+    //     lpBuffers: *mut WSABUF,                                 // IN OUT
+    //     dwBufferCount: DWORD,                                   // IN
+    //     lpNumberOfBytesRecvd: LPDWORD,                          // OUT
+    //     lpFlags: LPDWORD,                                       // IN OUT
+    //     lpOverlapped: *mut OVERLAPPED,                          // IN
+    //     lpCompletionRoutine: WSAOVERLAPPED_COMPLETION_ROUTINE   // IN
+    // ) -> i32;
 }
 
 
@@ -389,7 +429,7 @@ pub mod endian {
 pub mod endian {
     //=======================================================================
     #[inline]
-    pub fn net_16 (n: u16) {
+    pub fn net_16 (n: u16) -> u16 {
         n
     }
 }
