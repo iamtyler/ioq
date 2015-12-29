@@ -95,16 +95,16 @@ impl Socket {
 
     //=======================================================================
     pub fn new (af: i32, t: i32, p: i32) -> Result<Socket, Error> {
-        let socket = unsafe {
+        let raw = unsafe {
             sys::socket(af, t, p)
         };
 
-        if socket == sys::INVALID_SOCKET {
+        if raw == sys::INVALID_SOCKET {
             Err(Socket::last_error())
         }
         else {
             Ok(Socket {
-                handle: Handle::from_raw(socket as sys::HANDLE)
+                handle: Handle::from_raw(raw as sys::HANDLE)
             })
         }
     }

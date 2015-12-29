@@ -9,6 +9,7 @@
 
 use std::mem;
 use std::ptr;
+use std::sync::Arc;
 
 use net;
 use sys;
@@ -42,7 +43,8 @@ pub trait Custom {
 pub enum Event {
     Custom,
     TcpAccept(net::TcpListener, Result<net::TcpStream, Error>),
-    TcpReceive(net::TcpStream, Box<[u8]>, Result<(), Error>),
+    TcpReceive(net::TcpStream, Box<[u8]>, Result<usize, Error>),
+    TcpSend(net::TcpStream, Box<[u8]>, Result<(), Error>)
 }
 
 
@@ -97,8 +99,9 @@ impl State {
 *
 ***/
 
+#[derive(Debug, Clone)]
 pub struct Queue {
-    handle: Handle,
+    inner: Arc<QueueInner>,
 }
 
 impl Queue {
@@ -118,13 +121,32 @@ impl Queue {
         }
         else {
             Ok(Queue {
-                handle: Handle::from_raw(raw),
+                inner: Arc::new(QueueInner {
+                    handle: Handle::from_raw(raw),
+                })
             })
         }
     }
 
     //=======================================================================
     pub fn enqueue (&self, custom: Box<Custom>) -> Result<(), Error> {
+        self.inner.enqueue(custom)
+    }
+
+    //=======================================================================
+    pub fn dequeue (&self) -> Result<Event, Error> {
+        self.inner.dequeue()
+    }
+}
+
+#[derive(Debug)]
+struct QueueInner {
+    handle: Handle,
+}
+
+impl QueueInner {
+    //=======================================================================
+    fn enqueue (&self, custom: Box<Custom>) -> Result<(), Error> {
         // Create state
         let context = Box::new(CustomContext::new(custom));
         let state = Box::new(State::new(context));
@@ -151,7 +173,7 @@ impl Queue {
     }
 
     //=======================================================================
-    pub fn dequeue (&self) -> Result<Event, Error> {
+    fn dequeue (&self) -> Result<Event, Error> {
         // Output data
         let mut bytes: u32 = 0;
         let mut key: sys::ULONG_PTR = ptr::null_mut();
@@ -185,7 +207,7 @@ impl Queue {
     }
 }
 
-impl Drop for Queue {
+impl Drop for QueueInner {
     //=======================================================================
     fn drop (&mut self) {
         let _ = self.handle.close();
@@ -235,14 +257,16 @@ impl Context for CustomContext {
 
 //===========================================================================
 pub fn associate (queue: &Queue, handle: Handle) -> Result<(), Error> {
+    let queue_handle_raw = queue.inner.handle.to_raw();
+
     let success = unsafe {
         sys::CreateIoCompletionPort(
             handle.to_raw(),
-            queue.handle.to_raw(),
+            queue_handle_raw,
             ptr::null_mut(),
             0
         )
-    } == queue.handle.to_raw();
+    } == queue_handle_raw;
 
     if success {
         Ok(())

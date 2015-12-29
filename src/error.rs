@@ -42,7 +42,12 @@ impl Error {
 
     //=======================================================================
     pub fn unknown () -> Error {
-        Error::new(ErrorKind::Unknown, "")
+        Error::new(ErrorKind::Unknown, "Unknown error")
+    }
+
+    //=======================================================================
+    pub fn not_implemented () -> Error {
+        Error::new(ErrorKind::NotImplemented, "Functionality not implemented")
     }
 
     //=======================================================================
@@ -139,6 +144,7 @@ struct Custom {
 #[derive(Copy, PartialEq, Eq, Clone, Debug)]
 pub enum ErrorKind {
     Unknown,
+    NotImplemented,
 }
 
 
@@ -177,7 +183,7 @@ pub fn error_string<'a> (code: i32) -> &'a str {
             )
         };
 
-        message = unsafe { mem::transmute::<&[u8], &str>(&buffer[..count as usize]) };
+        message = unsafe { mem::transmute(&buffer[..count as usize]) };
     });
 
     if message.len() == 0 && last_error_code() == sys::ERROR_INSUFFICIENT_BUFFER {

@@ -38,7 +38,7 @@ pub type LPTSTR = *mut u8;
 pub type VA_LIST = *mut libc::c_char;
 pub type LPWSABUF = *mut WSABUF;
 
-pub type WSAOVERLAPPED_COMPLETION_ROUTINE = extern "C" fn (DWORD, DWORD, *mut OVERLAPPED, DWORD);
+pub type WSA_COMPL_ROUTINE = extern "C" fn (DWORD, DWORD, *mut OVERLAPPED, DWORD);
 
 
 /****************************************************************************
@@ -65,13 +65,13 @@ pub const NULL_HANDLE: HANDLE = 0 as HANDLE;
 
 pub const INFINITE: u32 = 0xFFFFFFFF;
 
+pub const ERROR_INSUFFICIENT_BUFFER: i32 = 122;
 pub const ERROR_IO_PENDING: i32 = 997;
 
 pub const FORMAT_MESSAGE_FROM_SYSTEM: u32 = 0x00001000;
 pub const FORMAT_MESSAGE_IGNORE_INSERTS: u32 = 0x00000200;
 pub const FORMAT_MESSAGE_MAX_WIDTH_MASK: u32 = 0x000000FF;
 
-pub const ERROR_INSUFFICIENT_BUFFER: i32 = 122;
 
 pub const SOCKADDR_STORAGE_EXTRA_BYTES: usize = 16;
 
@@ -286,7 +286,6 @@ impl OVERLAPPED {
 *
 ***/
 
-#[allow(dead_code)] // TODO: remove
 #[repr(C)]
 pub struct WSABUF {
     pub len: u32,
@@ -295,7 +294,6 @@ pub struct WSABUF {
 
 impl WSABUF {
     //=======================================================================
-    #[allow(dead_code)] // TODO: remove
     pub fn new (buffer: &mut [u8]) -> WSABUF {
         WSABUF {
             len: buffer.len() as u32,
@@ -398,15 +396,25 @@ extern "stdcall" {
         lpOverlapped: *mut OVERLAPPED       // IN
     ) -> i32;
 
-    // pub fn WSARecv (
-    //     s: SOCKET,                                              // IN
-    //     lpBuffers: *mut WSABUF,                                 // IN OUT
-    //     dwBufferCount: DWORD,                                   // IN
-    //     lpNumberOfBytesRecvd: LPDWORD,                          // OUT
-    //     lpFlags: LPDWORD,                                       // IN OUT
-    //     lpOverlapped: *mut OVERLAPPED,                          // IN
-    //     lpCompletionRoutine: WSAOVERLAPPED_COMPLETION_ROUTINE   // IN
-    // ) -> i32;
+    pub fn WSARecv (
+        s: SOCKET,                                      // IN
+        lpBuffers: LPWSABUF,                            // IN OUT
+        dwBufferCount: DWORD,                           // IN
+        lpNumberOfBytesRecvd: LPDWORD,                  // OUT
+        lpFlags: LPDWORD,                               // IN OUT
+        lpOverlapped: *mut OVERLAPPED,                  // IN
+        lpCompletionRoutine: Option<WSA_COMPL_ROUTINE>  // IN
+    ) -> i32;
+
+    pub fn WSASend (
+        s: SOCKET,                                      // IN
+        lpBuffers: LPWSABUF,                            // IN
+        dwBufferCount: DWORD,                           // IN
+        lpNumberOfBytesSent: LPDWORD,                   // OUT
+        lpFlags: DWORD,                                 // IN
+        lpOverlapped: *mut OVERLAPPED,                  // IN
+        lpCompletionRoutine: Option<WSA_COMPL_ROUTINE>  // IN
+    ) -> i32;
 }
 
 
