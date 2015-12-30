@@ -33,8 +33,8 @@ pub trait ToSocketAddrs {
 ***/
 
 pub enum AddrFamily {
-    Ipv4,
-    Ipv6,
+    V4,
+    V6,
 }
 
 
@@ -52,10 +52,18 @@ pub enum IpAddr {
 
 impl IpAddr {
     //=======================================================================
+    pub fn new_unspecified (family: AddrFamily) -> IpAddr {
+        match family {
+            AddrFamily::V4 => IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+            AddrFamily::V6 => IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)),
+        }
+    }
+
+    //=======================================================================
     pub fn family (&self) -> AddrFamily {
         match *self {
-            IpAddr::V4(..) => AddrFamily::Ipv4,
-            IpAddr::V6(..) => AddrFamily::Ipv6,
+            IpAddr::V4(..) => AddrFamily::V4,
+            IpAddr::V6(..) => AddrFamily::V6,
         }
     }
 }
@@ -93,6 +101,26 @@ impl SocketAddr {
     }
 
     //=======================================================================
+    pub fn new_unspecified (family: AddrFamily) -> SocketAddr {
+        match family {
+            AddrFamily::V4 => SocketAddr::V4(
+                SocketAddrV4::new(
+                    Ipv4Addr::new(0, 0, 0, 0),
+                    0
+                )
+            ),
+            AddrFamily::V6 => SocketAddr::V6(
+                SocketAddrV6::new(
+                    Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
+                    0,
+                    0,
+                    0
+                )
+            ),
+        }
+    }
+
+    //=======================================================================
     pub fn ip (&self) -> IpAddr {
         match *self {
             SocketAddr::V4(ref a) => IpAddr::V4(*a.ip()),
@@ -111,8 +139,8 @@ impl SocketAddr {
     //=======================================================================
     pub fn family (&self) -> AddrFamily {
         match *self {
-            SocketAddr::V4(..) => AddrFamily::Ipv4,
-            SocketAddr::V6(..) => AddrFamily::Ipv6,
+            SocketAddr::V4(..) => AddrFamily::V4,
+            SocketAddr::V6(..) => AddrFamily::V6,
         }
     }
 }
@@ -128,8 +156,9 @@ impl fmt::Display for SocketAddr {
 }
 
 impl ToSocketAddrs for SocketAddr {
-    //=======================================================================
     type Iter = IntoIter<SocketAddr>;
+
+    //=======================================================================
     fn to_socket_addrs (&self) -> Result<IntoIter<SocketAddr>, Error> {
         Ok(Some(*self).into_iter())
     }

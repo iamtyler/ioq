@@ -11,10 +11,10 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
+use error::Error;
+use handle::Handle;
 use net;
 use sys;
-use handle::Handle;
-use error::Error;
 
 
 /****************************************************************************
@@ -44,7 +44,8 @@ pub enum Event {
     Custom,
     TcpAccept(net::TcpListener, Result<net::TcpStream, Error>),
     TcpReceive(net::TcpStream, Box<[u8]>, Result<usize, Error>),
-    TcpSend(net::TcpStream, Box<[u8]>, Result<(), Error>)
+    TcpSend(net::TcpStream, Box<[u8]>, Result<(), Error>),
+    TcpConnect(net::TcpStream, Result<(), Error>),
 }
 
 

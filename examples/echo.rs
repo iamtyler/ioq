@@ -114,6 +114,8 @@ fn main () {
 
                 break;
             },
+
+            _ => panic!("Unexpected event"),
         }
     }
 

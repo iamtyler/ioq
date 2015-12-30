@@ -7,8 +7,8 @@
 *
 ***/
 
-mod init;
 mod addr;
+mod init;
 mod socket;
 mod tcp;
 

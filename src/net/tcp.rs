@@ -10,6 +10,7 @@
 use std::mem;
 use std::ptr;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::ATOMIC_USIZE_INIT;
 
 use sys;
 use queue;
@@ -41,7 +42,7 @@ impl TcpListener {
         -> Result<TcpListener, Error>
     {
         // Create socket
-        let socket = Socket::new_from_addr(addr.ip());
+        let socket = Socket::new_from_family(addr.family());
         if let Err(error) = socket {
             return Err(error);
         }
@@ -93,7 +94,8 @@ impl TcpListenerInner {
         }
 
         // Create boxed context
-        let context = Box::new(TcpAcceptContext {
+        let context = Box::new(AcceptContext {
+            queue: self.queue.clone(),
             listener: listener,
             socket: socket.unwrap(),
             addrs: AddrBuffers::new(),
@@ -106,19 +108,25 @@ impl TcpListenerInner {
         // Create boxed state
         let state = Box::new(queue::State::new(context));
 
-        // Call OS API
-        let success = unsafe {
-            sys::AcceptEx(
-                self.socket.to_raw(),
-                socket,
-                addrs,
-                0,
-                mem::size_of::<AddrBuffer>() as u32,
-                mem::size_of::<AddrBuffer>() as u32,
-                ptr::null_mut(),
-                state.overlapped_raw()
-            ) != 0
+        // Retrieve OS API
+        static ACCEPTEX: sys::WsaExtFn = sys::WsaExtFn {
+            guid: sys::WSAID_ACCEPTEX,
+            value: ATOMIC_USIZE_INIT,
         };
+        let ptr = ACCEPTEX.get(self.socket.to_raw());
+        let accept_ex: sys::FN_ACCEPTEX = unsafe { mem::transmute(ptr) };
+
+        // Call OS API
+        let success = accept_ex(
+            self.socket.to_raw(),
+            socket,
+            addrs,
+            0,
+            mem::size_of::<AddrBuffer>() as u32,
+            mem::size_of::<AddrBuffer>() as u32,
+            ptr::null_mut(),
+            state.overlapped_raw()
+        ) != 0;
 
         // Handle error
         if !success {
@@ -154,6 +162,44 @@ impl TcpStream {
     pub fn addr_remote (&self) -> SocketAddr { self.inner.lock().unwrap().remote }
 
     //=======================================================================
+    pub fn new (local: SocketAddr, queue: queue::Queue)
+        -> Result<TcpStream, Error>
+    {
+        // Create socket
+        let socket = Socket::new_from_family(local.family());
+        if let Err(error) = socket {
+            return Err(error);
+        }
+        let socket = socket.unwrap();
+
+        // Bind
+        if let Err(error) = socket.bind(local) {
+            return Err(error);
+        }
+
+        // Associate with queue
+        match queue::associate(&queue, socket.handle()) {
+            Ok(..) => {
+                Ok(TcpStream {
+                    inner: Arc::new(Mutex::new(TcpStreamInner {
+                        queue: queue,
+                        socket: socket,
+                        local: local,
+                        remote: SocketAddr::new_unspecified(local.family()),
+                    }))
+                })
+            },
+            Err(error) => Err(error),
+        }
+    }
+
+    //=======================================================================
+    pub fn connect (self, remote: SocketAddr) -> Result<(), Error> {
+        let stream = self.clone();
+        self.inner.lock().unwrap().connect(stream, remote)
+    }
+
+    //=======================================================================
     pub fn receive (&self, buffer: Box<[u8]>) -> Result<(), Error> {
         self.inner.lock().unwrap().receive(self.clone(), buffer)
     }
@@ -166,6 +212,7 @@ impl TcpStream {
 
 #[derive(Debug)]
 pub struct TcpStreamInner {
+    queue: queue::Queue,
     socket: Socket,
     local: SocketAddr,
     remote: SocketAddr,
@@ -173,15 +220,59 @@ pub struct TcpStreamInner {
 
 impl TcpStreamInner {
     //=======================================================================
+    pub fn connect (&mut self, stream: TcpStream, remote: SocketAddr) -> Result<(), Error> {
+        // Save remote address
+        self.remote = remote;
+
+        // Create state
+        let state = Box::new(queue::State::new(Box::new(ConnectContext {
+            stream: stream
+        })));
+
+        // Build sockaddr
+        let mut storage = [0u8; sys::SOCKADDR_MAX_BYTES];
+        let (sockaddr, len) = Socket::sockaddr_from_addr(remote, &mut storage);
+
+        // Retrieve OS API
+        static CONNECTEX: sys::WsaExtFn = sys::WsaExtFn {
+            guid: sys::WSAID_CONNECTEX,
+            value: ATOMIC_USIZE_INIT,
+        };
+        let ptr = CONNECTEX.get(self.socket.to_raw());
+        let connect_ex: sys::FN_CONNECTEX = unsafe { mem::transmute(ptr) };
+
+        // Call OS API
+        let success = connect_ex(
+            self.socket.to_raw(),
+            sockaddr,
+            len,
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+            state.overlapped_raw()
+        ) != 0;
+
+        // Handle error
+        if !success {
+            let code = Socket::last_error_code();
+            if code != sys::ERROR_IO_PENDING {
+                return Err(Error::from_os_error_code(code));
+            }
+        }
+
+        // Prevent deallocation of boxed state
+        let _ = Box::into_raw(state);
+        Ok(())
+    }
+
+    //=======================================================================
     fn receive (&self, stream: TcpStream, mut buffer: Box<[u8]>) -> Result<(), Error> {
         let mut buf = sys::WSABUF::new(&mut buffer[..]);
 
-        let context = Box::new(TcpReceiveContext {
+        let state = Box::new(queue::State::new(Box::new(ReceiveContext {
             stream: stream,
             buffer: buffer,
-        });
-
-        let state = Box::new(queue::State::new(context));
+        })));
 
         let mut flags: u32 = 0;
         let success = unsafe {
@@ -211,12 +302,10 @@ impl TcpStreamInner {
     fn send (&self, stream: TcpStream, mut buffer: Box<[u8]>) -> Result<(), Error> {
         let mut buf = sys::WSABUF::new(&mut buffer[..]);
 
-        let context = Box::new(TcpSendContext {
+        let state = Box::new(queue::State::new(Box::new(SendContext {
             stream: stream,
             buffer: buffer,
-        });
-
-        let state = Box::new(queue::State::new(context));
+        })));
 
         let flags: u32 = 0;
         let success = unsafe {
@@ -246,17 +335,18 @@ impl TcpStreamInner {
 
 /****************************************************************************
 *
-*   TcpAcceptContext
+*   AcceptContext
 *
 ***/
 
-struct TcpAcceptContext {
+struct AcceptContext {
+    queue: queue::Queue,
     listener: TcpListener,
     socket: Socket,
     addrs: AddrBuffers,
 }
 
-impl queue::Context for TcpAcceptContext {
+impl queue::Context for AcceptContext {
     //=======================================================================
     fn into_event (self: Box<Self>, _: u32) -> queue::Event {
         let result = queue::associate(
@@ -270,10 +360,12 @@ impl queue::Context for TcpAcceptContext {
 
         let local = self.addrs.local.addr.get_addr().unwrap();
         let remote = self.addrs.remote.addr.get_addr().unwrap();
-
         let listener = self.listener.clone();
+        let queue = self.queue.clone();
+
         let stream = TcpStream {
             inner: Arc::new(Mutex::new(TcpStreamInner {
+                queue: queue,
                 socket: self.socket,
                 local: local,
                 remote: remote,
@@ -292,16 +384,47 @@ impl queue::Context for TcpAcceptContext {
 
 /****************************************************************************
 *
-*   TcpReceiveContext
+*   ConnectContext
 *
 ***/
 
-struct TcpReceiveContext {
+struct ConnectContext {
+    stream: TcpStream,
+}
+
+impl queue::Context for ConnectContext {
+    //=======================================================================
+    fn into_event (self: Box<Self>, _: u32) -> queue::Event {
+        // TODO: get local address with getsockname
+
+        queue::Event::TcpConnect(
+            self.stream.clone(),
+            Ok(())
+        )
+    }
+
+    //=======================================================================
+    fn into_error (self: Box<Self>, _: u32) -> queue::Event {
+        queue::Event::TcpConnect(
+            self.stream.clone(),
+            Err(Socket::last_error())
+        )
+    }
+}
+
+
+/****************************************************************************
+*
+*   ReceiveContext
+*
+***/
+
+struct ReceiveContext {
     stream: TcpStream,
     buffer: Box<[u8]>,
 }
 
-impl queue::Context for TcpReceiveContext {
+impl queue::Context for ReceiveContext {
     //=======================================================================
     fn into_event (self: Box<Self>, bytes: u32) -> queue::Event {
         queue::Event::TcpReceive(
@@ -324,16 +447,16 @@ impl queue::Context for TcpReceiveContext {
 
 /****************************************************************************
 *
-*   TcpSendContext
+*   SendContext
 *
 ***/
 
-struct TcpSendContext {
+struct SendContext {
     stream: TcpStream,
     buffer: Box<[u8]>,
 }
 
-impl queue::Context for TcpSendContext {
+impl queue::Context for SendContext {
     //=======================================================================
     fn into_event (self: Box<Self>, _: u32) -> queue::Event {
         queue::Event::TcpSend(
@@ -363,7 +486,7 @@ impl queue::Context for TcpSendContext {
 #[repr(C)]
 struct AddrBuffer {
     addr: sys::sockaddr_storage,
-    __extra: [u8; sys::SOCKADDR_STORAGE_EXTRA_BYTES],
+    extra: [u8; sys::SOCKADDR_STORAGE_EXTRA_BYTES],
 }
 
 impl AddrBuffer {
@@ -371,7 +494,7 @@ impl AddrBuffer {
     fn new () -> AddrBuffer {
         AddrBuffer {
             addr: sys::sockaddr_storage::new(),
-            __extra: [0; sys::SOCKADDR_STORAGE_EXTRA_BYTES],
+            extra: [0; sys::SOCKADDR_STORAGE_EXTRA_BYTES],
         }
     }
 }

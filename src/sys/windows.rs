@@ -12,6 +12,7 @@
 
 use std::mem;
 use std::ptr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use libc;
 
@@ -37,8 +38,8 @@ pub type LPINT = *mut i32;
 pub type LPTSTR = *mut u8;
 pub type VA_LIST = *mut libc::c_char;
 pub type LPWSABUF = *mut WSABUF;
-
-pub type WSA_COMPL_ROUTINE = extern "C" fn (DWORD, DWORD, *mut OVERLAPPED, DWORD);
+pub type LPOVERLAPPED = *mut OVERLAPPED;
+pub type WSA_COMPL_ROUTINE = extern "C" fn (DWORD, DWORD, LPOVERLAPPED, DWORD);
 
 
 /****************************************************************************
@@ -72,8 +73,70 @@ pub const FORMAT_MESSAGE_FROM_SYSTEM: u32 = 0x00001000;
 pub const FORMAT_MESSAGE_IGNORE_INSERTS: u32 = 0x00000200;
 pub const FORMAT_MESSAGE_MAX_WIDTH_MASK: u32 = 0x000000FF;
 
-
 pub const SOCKADDR_STORAGE_EXTRA_BYTES: usize = 16;
+pub const SOCKADDR_MAX_BYTES: usize = 28; // Size of the longest sockaddr_* struct
+
+pub const SIO_GET_EXTENSION_FUNCTION_POINTER: DWORD = 0xc8000006;
+
+
+/****************************************************************************
+*
+*   WSA extension functions
+*
+***/
+
+pub type FN_ACCEPTEX = extern "C" fn (
+    SOCKET,
+    SOCKET,
+    PVOID,
+    DWORD,
+    DWORD,
+    DWORD,
+    LPDWORD,
+    LPOVERLAPPED
+) -> BOOL;
+
+pub const WSAID_ACCEPTEX: GUID = GUID {
+    Data1: 0xb5367df1,
+    Data2: 0xcbac,
+    Data3: 0x11cf,
+    Data4: [ 0x95, 0xca, 0x00, 0x80, 0x5f, 0x48, 0xa1, 0x92 ],
+};
+
+pub type FN_CONNECTEX = extern "C" fn (
+    SOCKET,
+    PVOID,
+    i32,
+    PVOID,
+    DWORD,
+    LPDWORD,
+    LPOVERLAPPED
+) -> BOOL;
+
+pub const WSAID_CONNECTEX: GUID = GUID {
+    Data1: 0x25a207b9,
+    Data2: 0xddf3,
+    Data3: 0x4660,
+    Data4: [ 0x8e, 0xe9, 0x76, 0xe5, 0x8c, 0x74, 0x06, 0x3e ],
+};
+
+
+/****************************************************************************
+*
+*   GUID
+*
+***/
+
+pub struct GUID {
+    #[allow(dead_code)]
+    Data1: u32,
+    #[allow(dead_code)]
+    Data2: u16,
+    #[allow(dead_code)]
+    Data3: u16,
+    #[allow(dead_code)]
+    Data4: [u8; 8],
+}
 
 
 /****************************************************************************
@@ -189,12 +252,12 @@ impl sockaddr_in6 {
 #[derive(Debug)]
 pub struct sockaddr_storage {
     pub ss_family: u16,
-    pub __ss_pad1: [u8; 6],
-    pub __ss_align: u64,
-    pub __ss_pad2: [u8; 16],
-    pub __ss_pad3: [u8; 32],
-    pub __ss_pad4: [u8; 32],
-    pub __ss_pad5: [u8; 32],
+    pub ss_pad1: [u8; 6],
+    pub ss_align: u64,
+    pub ss_pad2: [u8; 16],
+    pub ss_pad3: [u8; 32],
+    pub ss_pad4: [u8; 32],
+    pub ss_pad5: [u8; 32],
 }
 
 impl sockaddr_storage {
@@ -202,12 +265,12 @@ impl sockaddr_storage {
     pub fn new () -> sockaddr_storage {
         sockaddr_storage {
             ss_family: 0,
-            __ss_pad1: [0; 6],
-            __ss_align: 0,
-            __ss_pad2: [0; 16],
-            __ss_pad3: [0; 32],
-            __ss_pad4: [0; 32],
-            __ss_pad5: [0; 32],
+            ss_pad1: [0; 6],
+            ss_align: 0,
+            ss_pad2: [0; 16],
+            ss_pad3: [0; 32],
+            ss_pad4: [0; 32],
+            ss_pad5: [0; 32],
         }
     }
 
@@ -305,6 +368,60 @@ impl WSABUF {
 
 /****************************************************************************
 *
+*   WsaExtFn
+*
+***/
+
+pub struct WsaExtFn {
+    pub guid: GUID,
+    pub value: AtomicUsize,
+}
+
+impl WsaExtFn {
+    //=======================================================================
+    // TODO: try const fn when stable
+    // pub fn new (guid: GUID) -> WsaExtFn {
+    //     WsaExtFn {
+    //         guid: guid,
+    //         value: AtomicUsize::new(0),
+    //     }
+    // }
+
+    //=======================================================================
+    pub fn get (&self, socket: SOCKET) -> usize {
+        let value = self.value.load(Ordering::SeqCst);
+        if value != 0 {
+            return value;
+        }
+
+        let mut value = 0 as usize;
+        let mut bytes = 0;
+        let success = unsafe {
+            WSAIoctl(
+                socket,
+                SIO_GET_EXTENSION_FUNCTION_POINTER,
+                &self.guid as *const _ as *mut _,
+                mem::size_of_val(&self.guid) as DWORD,
+                &mut value as *mut _ as *mut _,
+                mem::size_of_val(&value) as DWORD,
+                &mut bytes,
+                ptr::null_mut(),
+                None
+            ) == 0
+        };
+
+        if !success {
+            panic!("WSAIoctl failure");
+        }
+
+        self.value.store(value, Ordering::SeqCst);
+        value
+    }
+}
+
+
+/****************************************************************************
+*
 *   Public Functions
 *
 ***/
@@ -338,7 +455,7 @@ extern "stdcall" {
         CompletionPort: HANDLE,             // IN
         lpNumberOfBytes: *mut u32,          // OUT
         lpCompletionKey: *mut ULONG_PTR,    // OUT
-        lpOverlapped: *mut *mut OVERLAPPED, // OUT
+        lpOverlapped: *mut LPOVERLAPPED,    // OUT
         dwMilliseconds: u32                 // IN
     ) -> BOOL;
 
@@ -346,7 +463,7 @@ extern "stdcall" {
         CompletionPort: HANDLE,             // IN
         dwNumberOfBytesTransferred: u32,    // IN
         dwCompletionKey: ULONG_PTR,         // IN
-        lpOverlapped: *mut OVERLAPPED       // IN OPT
+        lpOverlapped: LPOVERLAPPED          // IN OPT
     ) -> BOOL;
 }
 
@@ -354,7 +471,7 @@ extern "stdcall" {
 extern "stdcall" {
     pub fn bind (
         s: SOCKET,      // IN
-        name: LPVOID,   // IN
+        name: PVOID,    // IN
         namelen: i32    // IN
     ) -> i32;
 
@@ -377,23 +494,16 @@ extern "stdcall" {
 
     pub fn WSAGetLastError () -> i32;
 
-    pub fn WSAStartup (
-        wVersionRequested: u16, // IN
-        lpWSAData: *mut WSAData // OUT
-    ) -> i32;
-}
-
-#[link(name = "wsock32")]
-extern "stdcall" {
-    pub fn AcceptEx (
-        sListenSocket: SOCKET,              // IN
-        sAcceptSocket: SOCKET,              // IN
-        lpOutputBuffer: LPVOID,             // IN
-        dwReceveDataLength: u32,            // IN
-        dwLocalAddressLength: u32,          // IN
-        dwRemoteAddressLength: u32,         // IN
-        lpdwBytesReceived: LPDWORD,         // OUT
-        lpOverlapped: *mut OVERLAPPED       // IN
+    pub fn WSAIoctl (
+        s: SOCKET,                                      // IN
+        dwIoControlCode: DWORD,                         // IN
+        lpvInBuffer: LPVOID,                            // IN
+        cbInBuffer: DWORD,                              // IN
+        lpvOutBuffer: LPVOID,                           // OUT
+        cbOutBuffer: DWORD,                             // IN
+        lpcbBytesReturned: LPDWORD,                     // OUT
+        lpOverlapped: LPOVERLAPPED,                     // IN
+        lpCompletionRoutine: Option<WSA_COMPL_ROUTINE>  // IN
     ) -> i32;
 
     pub fn WSARecv (
@@ -402,8 +512,13 @@ extern "stdcall" {
         dwBufferCount: DWORD,                           // IN
         lpNumberOfBytesRecvd: LPDWORD,                  // OUT
         lpFlags: LPDWORD,                               // IN OUT
-        lpOverlapped: *mut OVERLAPPED,                  // IN
+        lpOverlapped: LPOVERLAPPED,                     // IN
         lpCompletionRoutine: Option<WSA_COMPL_ROUTINE>  // IN
+    ) -> i32;
+
+    pub fn WSAStartup (
+        wVersionRequested: u16, // IN
+        lpWSAData: *mut WSAData // OUT
     ) -> i32;
 
     pub fn WSASend (
@@ -412,7 +527,7 @@ extern "stdcall" {
         dwBufferCount: DWORD,                           // IN
         lpNumberOfBytesSent: LPDWORD,                   // OUT
         lpFlags: DWORD,                                 // IN
-        lpOverlapped: *mut OVERLAPPED,                  // IN
+        lpOverlapped: LPOVERLAPPED,                     // IN
         lpCompletionRoutine: Option<WSA_COMPL_ROUTINE>  // IN
     ) -> i32;
 }

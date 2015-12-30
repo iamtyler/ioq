@@ -12,7 +12,7 @@ use std::mem;
 use sys;
 use error::Error;
 use handle::Handle;
-use super::addr::{SocketAddr, IpAddr, AddrFamily};
+use super::addr::{SocketAddr, AddrFamily};
 
 
 /****************************************************************************
@@ -28,14 +28,17 @@ trait HandleExt {
 }
 
 impl HandleExt for Handle {
+    //=======================================================================
     fn invalid_socket () -> Handle {
         Handle::from_socket(sys::INVALID_SOCKET)
     }
 
+    //=======================================================================
     fn from_socket (socket: sys::SOCKET) -> Handle {
         Handle::from_raw(socket as sys::HANDLE)
     }
 
+    //=======================================================================
     fn to_socket (&self) -> sys::SOCKET {
         self.to_raw() as sys::SOCKET
     }
@@ -63,15 +66,10 @@ impl Socket {
     }
 
     //=======================================================================
-    pub fn new_from_addr (ip: IpAddr) -> Result<Socket, Error> {
-        Socket::new_from_family(ip.family())
-    }
-
-    //=======================================================================
     pub fn new_from_family (family: AddrFamily) -> Result<Socket, Error> {
         match family {
-            AddrFamily::Ipv4 => Socket::new_v4(),
-            AddrFamily::Ipv6 => Socket::new_v6(),
+            AddrFamily::V4 => Socket::new_v4(),
+            AddrFamily::V6 => Socket::new_v6(),
         }
     }
 
@@ -111,27 +109,14 @@ impl Socket {
 
     //=======================================================================
     pub fn bind (&self, addr: SocketAddr) -> Result<(), Error> {
-        let sockaddr_in;
-        let sockaddr_in6;
-        let sockaddr: sys::LPVOID;
+        let mut storage = [0u8; sys::SOCKADDR_MAX_BYTES];
+        let (sockaddr, len) = Socket::sockaddr_from_addr(addr, &mut storage);
 
-        match addr {
-            SocketAddr::V4(addr) => {
-                sockaddr_in = sys::sockaddr_in::from_addr(addr);
-                sockaddr = unsafe { mem::transmute(&sockaddr_in) };
-            },
-            SocketAddr::V6(addr) => {
-                sockaddr_in6 = sys::sockaddr_in6::from_addr(addr);
-                sockaddr = unsafe { mem::transmute(&sockaddr_in6) };
-            }
-        }
-
-        // Bind socket to address
         let success = unsafe {
             sys::bind(
                 self.handle.to_socket(),
                 sockaddr,
-                mem::size_of::<sys::sockaddr_in>() as i32
+                len as i32
             ) == 0
         };
 
@@ -177,6 +162,33 @@ impl Socket {
     pub fn last_error () -> Error {
         Error::from_os_error_code(Socket::last_error_code())
     }
+
+    //=======================================================================
+    pub fn sockaddr_from_addr (
+        addr: SocketAddr,
+        buffer: &mut [u8; sys::SOCKADDR_MAX_BYTES]
+    ) -> (sys::PVOID, i32) {
+        match addr {
+            SocketAddr::V4(addr) => {
+                let sockaddr_in: &mut sys::sockaddr_in = unsafe { mem::transmute(buffer) };
+                *sockaddr_in = sys::sockaddr_in::from_addr(addr);
+                
+                let len: i32 = mem::size_of_val(sockaddr_in) as i32;
+
+                let sockaddr: sys::PVOID = unsafe { mem::transmute(sockaddr_in) };
+                (sockaddr, len)
+            },
+            SocketAddr::V6(addr) => {
+                let sockaddr_in6: &mut sys::sockaddr_in6 = unsafe { mem::transmute(buffer) };
+                *sockaddr_in6 = sys::sockaddr_in6::from_addr(addr);
+                
+                let len: i32 = mem::size_of_val(sockaddr_in6) as i32;
+
+                let sockaddr: sys::PVOID = unsafe { mem::transmute(sockaddr_in6) };
+                (sockaddr, len)
+            },
+        }
+    }
 }
 
 impl Drop for Socket {
@@ -185,12 +197,3 @@ impl Drop for Socket {
         self.close();
     }
 }
-
-
-/****************************************************************************
-*
-*   Tests
-*
-***/
-
-// TODO: tests

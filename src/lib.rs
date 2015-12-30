@@ -12,9 +12,9 @@ extern crate libc;
 pub mod error;
 pub mod net;
 
-mod sys;
 mod handle;
 mod queue;
+mod sys;
 
 pub use self::queue::Custom;
 pub use self::queue::Event;

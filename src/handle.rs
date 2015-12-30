@@ -7,12 +7,12 @@
 *
 ***/
 
+use std::cmp;
 use std::fmt;
 use std::hash;
-use std::cmp;
 
-use sys;
 use error::Error;
+use sys;
 
 
 /****************************************************************************
