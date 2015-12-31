@@ -28,8 +28,11 @@ fn main () {
     let addr = ioq::net::SocketAddr::new(ip, port);
 
     // Create a TCP listener and accept
-    ioq::net::TcpListener::new(addr, queue.clone()).unwrap().accept().unwrap();
-    println!("listening at {}", addr);
+    {
+        let listener = ioq::net::TcpListener::new(addr, queue.clone()).unwrap();
+        listener.accept().unwrap();
+        println!("listening at {}", listener.addr());
+    }
 
     // Dequeue event
     println!("event: {:?}", queue.dequeue().unwrap());

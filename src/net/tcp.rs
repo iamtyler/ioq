@@ -395,11 +395,21 @@ struct ConnectContext {
 impl queue::Context for ConnectContext {
     //=======================================================================
     fn into_event (self: Box<Self>, _: u32) -> queue::Event {
-        // TODO: get local address with getsockname
+        let mut inner = self.stream.inner.lock().unwrap();
 
+        // Get actual local address
+        let result = match inner.socket.get_addr() {
+            Ok(addr) => {
+                inner.local = addr;
+                Ok(())
+            },
+            Err(e) => Err(e),
+        };
+
+        // Return event
         queue::Event::TcpConnect(
             self.stream.clone(),
-            Ok(())
+            result
         )
     }
 
@@ -521,12 +531,3 @@ impl AddrBuffers {
         }
     }
 }
-
-
-/****************************************************************************
-*
-*   Tests
-*
-***/
-
-// TODO: tests

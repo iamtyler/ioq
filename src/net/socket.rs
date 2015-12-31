@@ -146,6 +146,28 @@ impl Socket {
     }
 
     //=======================================================================
+    pub fn get_addr (&self) -> Result<SocketAddr, Error> {
+        // Get local address
+        let mut storage = sys::sockaddr_storage::new();
+        let mut bytes = mem::size_of_val(&storage) as i32;
+        let success = unsafe {
+            sys::getsockname(
+                self.to_raw(),
+                &mut storage as *mut _ as sys::PVOID,
+                &mut bytes
+            ) == 0
+        };
+
+        // Result
+        if success {
+            Ok(storage.get_addr().unwrap())
+        }
+        else {
+            Err(Socket::last_error())
+        }
+    }
+
+    //=======================================================================
     pub fn close (&mut self) {
         if self.is_valid() {
             unsafe { sys::closesocket(self.handle.to_socket()) };

@@ -127,14 +127,11 @@ pub const WSAID_CONNECTEX: GUID = GUID {
 *
 ***/
 
+#[allow(dead_code)]
 pub struct GUID {
-    #[allow(dead_code)]
     Data1: u32,
-    #[allow(dead_code)]
     Data2: u16,
-    #[allow(dead_code)]
     Data3: u16,
-    #[allow(dead_code)]
     Data4: [u8; 8],
 }
 
@@ -476,18 +473,24 @@ extern "stdcall" {
     ) -> i32;
 
     pub fn closesocket (
-        s: SOCKET // IN
+        s: SOCKET   // IN
+    ) -> i32;
+
+    pub fn getsockname (
+        s: SOCKET,          // IN
+        name: PVOID,        // OUT
+        namelen: *mut i32   // IN
     ) -> i32;
 
     pub fn listen (
-        s: SOCKET,   // IN
-        backlog: i32 // IN
+        s: SOCKET,      // IN
+        backlog: i32    // IN
     ) -> i32;
 
     pub fn socket (
-        af: i32,       // IN
-        socktype: i32, // IN
-        protocol: i32  // IN
+        af: i32,        // IN
+        socktype: i32,  // IN
+        protocol: i32   // IN
     ) -> SOCKET;
 
     pub fn WSACleanup () -> i32;
